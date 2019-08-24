@@ -450,6 +450,8 @@ SV_FatPVS(vec3_t org)
 		Com_Error(ERR_FATAL, "SV_FatPVS: count < 1");
 	}
 
+	// FIXME: FUCK THIS IS BROKEN! assumes sizeof(long) == 4 !!
+	//        => use int or ideally int32_t instead
 	longs = (CM_NumClusters() + 31) >> 5;
 
 	/* convert leafs to clusters */
