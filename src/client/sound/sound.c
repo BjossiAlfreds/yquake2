@@ -752,11 +752,15 @@ S_RegisterSexedSound(const entity_state_t *ent, const char *base)
 	sfx_t *sfx;
 	char model[MAX_QPATH];
 	char sexedFilename[MAX_QPATH];
+	char *cs;
+	int n;
 
 	/* determine what model the client is using */
-	GetModelName(
-		cl.configstrings[CS_PLAYERSKINS + ent->number - 1],
-		model, sizeof(model));
+	n = ent->number;
+	cs = (n < 1 || n > MAX_CLIENTS) ?
+		NULL : cl.configstrings[CS_PLAYERSKINS + n - 1];
+
+	GetModelName(cs, model, sizeof(model));
 
 	/* if we can't figure it out, they're male */
 	if (!model[0])
