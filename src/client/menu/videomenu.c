@@ -989,10 +989,16 @@ VID_MenuKey(int key)
 			Menu_AdjustCursor(m, 1);
 			break;
 		case K_LEFTARROW:
-			Menu_SlideItem(m, -1);
+			if (!Menu_SlideItem(m, -1))
+			{
+				return NULL;
+			}
 			break;
 		case K_RIGHTARROW:
-			Menu_SlideItem(m, 1);
+			if (!Menu_SlideItem(m, 1))
+			{
+				return NULL;
+			}
 			break;
 		case K_ENTER:
 			Menu_SelectItem(m);
