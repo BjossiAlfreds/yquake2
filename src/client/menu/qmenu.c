@@ -36,10 +36,10 @@ static void Action_Draw(menuaction_s *a);
 static void Menu_DrawStatusBar(const char *string);
 static void MenuList_Draw(menulist_s *l);
 static void Separator_Draw(menuseparator_s *s);
-static void Slider_DoSlide(menuslider_s *s, int dir);
+static qboolean Slider_DoSlide(menuslider_s *s, int dir);
 static void Slider_Draw(menuslider_s *s);
+static qboolean SpinControl_DoSlide(menulist_s *s, int dir);
 static void SpinControl_Draw(menulist_s *s);
-static void SpinControl_DoSlide(menulist_s *s, int dir);
 
 extern viddef_t viddef;
 
@@ -592,23 +592,25 @@ Menu_SetStatusBar(menuframework_s *m, const char *string)
 	m->statusbar = string;
 }
 
-void
+qboolean
 Menu_SlideItem(menuframework_s *s, int dir)
 {
 	menucommon_s *item = (menucommon_s *)Menu_ItemAtCursor(s);
 
-	if (item)
+	if (!item)
 	{
-		switch (item->type)
-		{
-			case MTYPE_SLIDER:
-				Slider_DoSlide((menuslider_s *)item, dir);
-				break;
-			case MTYPE_SPINCONTROL:
-				SpinControl_DoSlide((menulist_s *)item, dir);
-				break;
-		}
+		return false;
 	}
+
+	switch (item->type)
+	{
+		case MTYPE_SLIDER:
+			return Slider_DoSlide((menuslider_s *)item, dir);
+		case MTYPE_SPINCONTROL:
+			return SpinControl_DoSlide((menulist_s *)item, dir);
+	}
+
+	return false;
 }
 
 void
@@ -656,7 +658,7 @@ Separator_Draw(menuseparator_s *s)
 	}
 }
 
-void
+static qboolean
 Slider_DoSlide(menuslider_s *s, int dir)
 {
 	const float step = (s->slidestep)? s->slidestep : 0.1f;
@@ -669,6 +671,14 @@ Slider_DoSlide(menuslider_s *s, int dir)
 		sign = -1.0f;
 	}
 
+	dir = (dir <= 0) ? -1 : 1;
+
+	if ((value == s->minvalue && dir == -1) ||
+		(value == s->maxvalue && dir == 1))
+	{
+		return false;
+	}
+
 	value += dir * step;
 	Cvar_SetValue(s->cvar, ClampCvar(s->minvalue, s->maxvalue, value) * sign);
 
@@ -676,6 +686,8 @@ Slider_DoSlide(menuslider_s *s, int dir)
 	{
 		s->generic.callback(s);
 	}
+
+	return true;
 }
 
 #define SLIDER_RANGE 10
@@ -720,26 +732,25 @@ Slider_Draw(menuslider_s *s)
 		y, buffer);
 }
 
-void
+static qboolean
 SpinControl_DoSlide(menulist_s *s, int dir)
 {
-	s->curvalue += dir;
+	dir = (dir <= 0) ? -1 : 1;
 
-	if (s->curvalue < 0)
+	if ((s->curvalue == 0 && dir == -1) ||
+		(!s->itemnames[s->curvalue + 1] && dir == 1))
 	{
-		s->curvalue = 0;
-		return;
+		return false;
 	}
-	else if (s->itemnames[s->curvalue] == 0)
-	{
-		s->curvalue--;
-		return;
-	}
+
+	s->curvalue += dir;
 
 	if (s->generic.callback)
 	{
 		s->generic.callback(s);
 	}
+
+	return true;
 }
 
 void
