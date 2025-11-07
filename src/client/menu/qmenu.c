@@ -58,29 +58,29 @@ ClampCvar(float min, float max, float value)
 	return Q_clamp(value, min, max);
 }
 
-/*
-=================
-Bitmap_Draw
-=================
-*/
 static void
 Bitmap_Draw(menubitmap_s * item)
 {
-	float scale = SCR_GetMenuScale();
-	int x = 0;
-	int y = 0;
+	const char *name;
+	float scale;
 
-	x = item->generic.x;
-	y = item->generic.y;
-
-	if (((item->generic.flags & QMF_HIGHLIGHT_IF_FOCUS) &&
+	if (item->focuspic &&
+		((item->generic.flags & QMF_HIGHLIGHT_IF_FOCUS) &&
 		(Menu_ItemAtCursor(item->generic.parent) == item)))
 	{
-		Draw_PicScaled(x * scale, y * scale, item->focuspic, scale);
+		name = item->focuspic;
 	}
-	else if (item->generic.name)
+	else
 	{
-		Draw_PicScaled(x * scale, y * scale, ( char * )item->generic.name, scale);
+		name = item->generic.name;
+	}
+
+	if (name && *name != '\0')
+	{
+		scale = SCR_GetMenuScale();
+
+		Draw_PicScaled(item->generic.x * scale, item->generic.y * scale,
+			name, scale);
 	}
 }
 
