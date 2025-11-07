@@ -5981,6 +5981,8 @@ static strlist_t s_skinnames[MAX_PLAYERMODELS];
 static strlist_t s_modelname;
 static strlist_t s_directory;
 
+static char player_icon_path[MAX_QPATH];
+
 static int rate_tbl[] = {2500, 3200, 5000, 10000, 25000, 0};
 static const char *rate_names[] = {"28.8 Modem", "33.6 Modem", "Single ISDN",
 								   "Dual ISDN/Cable", "T1/LAN", "User defined", 0 };
@@ -6006,11 +6008,51 @@ RateCallback(void *unused)
 	}
 }
 
+static qboolean
+GetModelSkin(int mdlindex, int imgindex, char **mdl, char **img)
+{
+	*mdl = NULL;
+	*img = NULL;
+
+	if (!StrList_ValidIndex(&s_modelname, mdlindex) ||
+		!StrList_ValidIndex(&s_skinnames[mdlindex], imgindex))
+	{
+		return false;
+	}
+
+	*mdl = StrList_Elem(&s_modelname, mdlindex);
+	if (!(*mdl))
+	{
+		return false;
+	}
+
+	*img = StrList_Elem(&s_skinnames[mdlindex], imgindex);
+
+	return *img ? true : false;
+}
+
+static void
+SkinCallback(void *unused)
+{
+	char *mdl, *img;
+
+	if (!GetModelSkin(s_player_model_box.curvalue, s_player_skin_box.curvalue,
+		&mdl, &img))
+	{
+		*player_icon_path = '\0';
+		return;
+	}
+
+	Com_sprintf(player_icon_path, sizeof(player_icon_path), "/players/%s/%s_i.pcx", mdl, img);
+}
+
 static void
 ModelCallback(void *unused)
 {
 	s_player_skin_box.itemnames = (const char **)StrList_Strings(&s_skinnames[s_player_model_box.curvalue]);
 	s_player_skin_box.curvalue = 0;
+
+	SkinCallback(NULL);
 }
 
 // returns true if icon .pcx exists for skin .pcx
@@ -6553,7 +6595,7 @@ PlayerConfig_MenuInit(void)
 	s_player_icon_bitmap.generic.flags = QMF_INACTIVE;
 	s_player_icon_bitmap.generic.x = ((viddef.width / scale - 95) / 2) - 87;
 	s_player_icon_bitmap.generic.y = ((viddef.height / (2 * scale))) - 72;
-	s_player_icon_bitmap.generic.name = 0;
+	s_player_icon_bitmap.generic.name = player_icon_path;
 	s_player_icon_bitmap.generic.callback = 0;
 	s_player_icon_bitmap.focuspic = 0;
 
@@ -6579,10 +6621,13 @@ PlayerConfig_MenuInit(void)
 	s_player_skin_box.generic.x = -56 * scale;
 	s_player_skin_box.generic.y = 94;
 	s_player_skin_box.generic.name = 0;
-	s_player_skin_box.generic.callback = 0;
+	s_player_skin_box.generic.callback = SkinCallback;
 	s_player_skin_box.generic.cursor_offset = -48;
 	s_player_skin_box.curvalue = imgindex;
 	s_player_skin_box.itemnames = (const char **)StrList_Strings(&s_skinnames[mdlindex]);
+
+	/* initialize icon path */
+	SkinCallback(NULL);
 
 	s_player_hand_title.generic.type = MTYPE_SEPARATOR;
 	s_player_hand_title.generic.name = "handedness";
@@ -6676,34 +6721,20 @@ PlayerConfig_AnimateModel(entity_t *entity, int count, int curTime)
 	}
 }
 
-static qboolean
-PlayerConfig_MenuDraw_Model(char *bmname, size_t bmname_size)
+static void
+PlayerConfig_MenuDraw_Model(void)
 {
 	char scratch[MAX_QPATH];
 	refdef_t refdef;
 	entity_t entities[2];
 	float scale;
-	const char *imgname, *mdlname;
+	char *imgname, *mdlname;
 	int i, curTime;
 
-	*bmname = '\0';
-
-	if (!StrList_ValidIndex(&s_modelname, s_player_model_box.curvalue) ||
-		!StrList_ValidIndex(&s_skinnames[s_player_model_box.curvalue], s_player_skin_box.curvalue))
+	if (!GetModelSkin(s_player_model_box.curvalue, s_player_skin_box.curvalue,
+		&mdlname, &imgname))
 	{
-		return false;
-	}
-
-	mdlname = StrList_Elem(&s_modelname, s_player_model_box.curvalue);
-	if (!mdlname)
-	{
-		return false;
-	}
-
-	imgname = StrList_Elem(&s_skinnames[s_player_model_box.curvalue], s_player_skin_box.curvalue);
-	if (!imgname)
-	{
-		return false;
+		return;
 	}
 
 	scale = SCR_GetMenuScale();
@@ -6776,29 +6807,19 @@ PlayerConfig_MenuDraw_Model(char *bmname, size_t bmname_size)
 	refdef.lightstyles = 0;
 	refdef.rdflags = RDF_NOWORLDMODEL;
 
-	Com_sprintf(bmname, bmname_size, "/players/%s/%s_i.pcx",
-		mdlname, imgname);
-
 	M_DrawTextBox(((int)(refdef.x) * (320.0F / viddef.width) - 8),
 				  (int)((viddef.height / 2) * (240.0F / viddef.height) - 77),
 				  refdef.width / (8 * scale), refdef.height / (8 * scale));
 	refdef.height += 4 * scale;
 
 	R_RenderFrame(&refdef);
-
-	return true;
 }
 
 static void
 PlayerConfig_MenuDraw(void)
 {
-	char bmname[MAX_QPATH];
-
-	s_player_icon_bitmap.generic.name =
-		PlayerConfig_MenuDraw_Model(bmname, sizeof(bmname)) ?
-			bmname : NULL;
-
 	Menu_Draw(&s_player_config_menu);
+	PlayerConfig_MenuDraw_Model();
 }
 
 static const char *
