@@ -53,29 +53,29 @@ ClampCvar(float min, float max, float value)
 	return Q_clamp(value, min, max);
 }
 
-/*
-=================
-Bitmap_Draw
-=================
-*/
 static void
 Bitmap_Draw(menubitmap_s * item)
 {
-	float scale = SCR_GetMenuScale();
-	int x = 0;
-	int y = 0;
+	const char *name;
+	float scale;
 
-	x = item->generic.x;
-	y = item->generic.y;
-
-	if (((item->generic.flags & QMF_HIGHLIGHT_IF_FOCUS) &&
+	if (item->focuspic &&
+		((item->generic.flags & QMF_HIGHLIGHT_IF_FOCUS) &&
 		(Menu_ItemAtCursor(item->generic.parent) == item)))
 	{
-		Draw_PicScaled(x * scale, y * scale, item->focuspic, scale);
+		name = item->focuspic;
 	}
-	else if (item->generic.name)
+	else
 	{
-		Draw_PicScaled(x * scale, y * scale, ( char * )item->generic.name, scale);
+		name = item->generic.name;
+	}
+
+	if (name && *name != '\0')
+	{
+		scale = SCR_GetMenuScale();
+
+		Draw_PicScaled(item->generic.x * scale, item->generic.y * scale,
+			name, scale);
 	}
 }
 
@@ -735,15 +735,27 @@ Slider_Draw(menuslider_s *s)
 static qboolean
 SpinControl_DoSlide(menulist_s *s, int dir)
 {
-	dir = (dir <= 0) ? -1 : 1;
-
-	if ((s->curvalue == 0 && dir == -1) ||
-		(!s->itemnames[s->curvalue + 1] && dir == 1))
+	if (!s->itemnames)
 	{
 		return false;
 	}
 
-	s->curvalue += dir;
+	if ((s->curvalue < 0) || (!s->itemnames[s->curvalue]))
+	{
+		s->curvalue = 0;
+	}
+	else
+	{
+		dir = (dir <= 0) ? -1 : 1;
+
+		if ((s->curvalue == 0 && dir == -1) ||
+			(!s->itemnames[s->curvalue + 1] && dir == 1))
+		{
+			return false;
+		}
+
+		s->curvalue += dir;
+	}
 
 	if (s->generic.callback)
 	{
@@ -753,14 +765,16 @@ SpinControl_DoSlide(menulist_s *s, int dir)
 	return true;
 }
 
-void
+static void
 SpinControl_Draw(menulist_s *s)
 {
 	char buffer[100];
-	float scale = SCR_GetMenuScale();
-	int x = 0;
-	int y = 0;
+	const char *item, *nl;
+	char *nlb;
+	float scale;
+	int x, y;
 
+	scale = SCR_GetMenuScale();
 	x = s->generic.parent->x + s->generic.x;
 	y = s->generic.parent->y + s->generic.y;
 
@@ -770,20 +784,38 @@ SpinControl_Draw(menulist_s *s)
 			y, s->generic.name);
 	}
 
-	if (!strchr(s->itemnames[s->curvalue], '\n'))
+	if (!s->itemnames)
 	{
-		Menu_DrawString(x + (RCOLUMN_OFFSET * scale),
-			y, s->itemnames[s->curvalue]);
+		item = "(empty)";
 	}
 	else
 	{
-		Q_strlcpy(buffer, s->itemnames[s->curvalue], sizeof(buffer));
-		*strchr(buffer, '\n') = 0;
+		item = ((s->curvalue < 0) || (!s->itemnames[s->curvalue])) ?
+			"(invalid)" : s->itemnames[s->curvalue];
+	}
+
+	nl = strchr(item, '\n');
+
+	if (!nl)
+	{
+		Menu_DrawString(x + (RCOLUMN_OFFSET * scale),
+			y, item);
+	}
+	else
+	{
+		Q_strlcpy(buffer, item, sizeof(buffer));
+		nlb = strchr(buffer, '\n');
+
+		if (nlb)
+		{
+			*nlb = '\0';
+
+			Menu_DrawString(x + (RCOLUMN_OFFSET * scale),
+				y + 10, nlb + 1);
+		}
+
 		Menu_DrawString(x + (RCOLUMN_OFFSET * scale),
 			y, buffer);
-		strcpy(buffer, strchr(s->itemnames[s->curvalue], '\n') + 1);
-		Menu_DrawString(x + (RCOLUMN_OFFSET * scale),
-			y + 10, buffer);
 	}
 }
 
