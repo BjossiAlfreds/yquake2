@@ -240,7 +240,7 @@ void
 SV_WriteServerFile(qboolean autosave)
 {
 	FILE *f;
-	cvar_t *var;
+	const cvar_t *var;
 	char name[MAX_OSPATH], string[128];
 	char workdir[MAX_OSPATH];
 	char comment[32];

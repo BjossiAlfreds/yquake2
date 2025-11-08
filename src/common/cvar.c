@@ -28,7 +28,6 @@
 
 cvar_t *cvar_vars;
 
-
 typedef struct
 {
 	char *old;
@@ -94,6 +93,36 @@ static const replacement_t replacements[] = {
 	{"intensity", "gl1_intensity"}
 };
 
+static char *
+Cvar_CopyString(char *old_value, const char *new_value)
+{
+	size_t ol, nl;
+
+	if (!new_value)
+	{
+		new_value = "";
+	}
+
+	if (!old_value)
+	{
+		return CopyString(new_value);
+	}
+
+	ol = Z_BlockSize(old_value);
+	nl = strlen(new_value) + 1;
+
+	if (nl > ol)
+	{
+		// FIXME: replace with Z_Realloc later
+		//old_value = Z_Realloc(old_value, nl);
+		Z_Free(old_value);
+		old_value = Z_Malloc(nl);
+	}
+
+	strcpy(old_value, new_value);
+
+	return old_value;
+}
 
 static qboolean
 Cvar_InfoValidate(const char *s)
@@ -116,22 +145,33 @@ Cvar_InfoValidate(const char *s)
 	return true;
 }
 
+/* An ugly hack to rewrite changed CVARs */
+static const char *
+Cvar_CheckReplacements(const char *var_name, qboolean msg)
+{
+	const replacement_t *r;
+
+	for (r = replacements; r < &replacements[sizeof(replacements) / sizeof(*replacements)]; r++)
+	{
+		if (!strcmp(var_name, r->old))
+		{
+			if (msg)
+			{
+				Com_Printf("cvar %s is deprecated, use %s instead\n",
+					r->old, r->new);
+			}
+
+			return r->new;
+		}
+	}
+
+	return var_name;
+}
+
 static cvar_t *
 Cvar_FindVar(const char *var_name)
 {
 	cvar_t *var;
-	int i;
-
-	/* An ugly hack to rewrite changed CVARs */
-	for (i = 0; i < sizeof(replacements) / sizeof(replacement_t); i++)
-	{
-		if (!strcmp(var_name, replacements[i].old))
-		{
-			Com_Printf("cvar %s is deprecated, use %s instead\n", replacements[i].old, replacements[i].new);
-
-			var_name = replacements[i].new;
-		}
-	}
 
 	for (var = cvar_vars; var; var = var->next)
 	{
@@ -182,6 +222,8 @@ Cvar_VariableValue(const char *var_name)
 {
 	cvar_t *var;
 
+	var_name = Cvar_CheckReplacements(var_name, true);
+
 	var = Cvar_FindVar(var_name);
 
 	if (!var)
@@ -197,56 +239,48 @@ Cvar_VariableString(const char *var_name)
 {
 	cvar_t *var;
 
+	var_name = Cvar_CheckReplacements(var_name, true);
+
 	var = Cvar_FindVar(var_name);
 
-	if (!var)
-	{
-		return "";
-	}
-
-	return var->string;
+	return (var && var->string) ? var->string : "";
 }
 
 /*
  * If the variable already exists, the value will not be set
  * The flags will be or'ed in if the variable exists.
  */
-cvar_t *
-Cvar_Get(const char *var_name, const char *var_value, int flags)
+static cvar_t *
+Cvar_AddToList(const char *var_name, const char *var_value, int flags)
 {
 	cvar_t *var;
 	cvar_t **pos;
 
-	if (flags & (CVAR_USERINFO | CVAR_SERVERINFO))
+	var = Z_Malloc(sizeof(*var));
+
+	var->name = CopyString(var_name);
+	var->string = CopyString(var_value);
+	var->default_string = CopyString(var_value);
+	var->flags = flags;
+	var->modified = true;
+	var->value = strtod(var_value, (char **)NULL);
+
+	pos = &cvar_vars;
+
+	while (*pos && strcmp((*pos)->name, var->name) < 0)
 	{
-		if (!Cvar_InfoValidate(var_name))
-		{
-			Com_Printf("invalid info cvar name\n");
-			return NULL;
-		}
+		pos = &(*pos)->next;
 	}
 
-	var = Cvar_FindVar(var_name);
+	var->next = *pos;
+	*pos = var;
 
-	if (var)
-	{
-		var->flags |= flags;
+	return var;
+}
 
-		if (var->default_string)
-			Z_Free(var->default_string);
-
-		if (!var_value)
-		{
-			var->default_string = CopyString("");
-		}
-		else
-		{
-			var->default_string = CopyString(var_value);
-		}
-
-		return var;
-	}
-
+static cvar_t *
+Cvar_GetNew(const char *var_name, const char *var_value, int flags)
+{
 	if (!var_value)
 	{
 		return NULL;
@@ -263,43 +297,38 @@ Cvar_Get(const char *var_name, const char *var_value, int flags)
 
 	// if $game is the default one ("baseq2"), then use "" instead because
 	// other code assumes this behavior (e.g. FS_BuildGameSpecificSearchPath())
-	if(strcmp(var_name, "game") == 0 && strcmp(var_value, BASEDIRNAME) == 0)
+	if (strcmp(var_name, "game") == 0 && strcmp(var_value, BASEDIRNAME) == 0)
 	{
 		var_value = "";
 	}
 
-	var = Z_Malloc(sizeof(*var));
-	var->name = CopyString(var_name);
-	var->string = CopyString(var_value);
-	var->default_string = CopyString(var_value);
-	var->modified = true;
-	var->value = strtod(var->string, (char **)NULL);
-
-	/* link the variable in */
-	pos = &cvar_vars;
-	while (*pos && strcmp((*pos)->name, var->name) < 0)
-	{
-		pos = &(*pos)->next;
-	}
-	var->next = *pos;
-	*pos = var;
-
-	var->flags = flags;
-
-	return var;
+	return Cvar_AddToList(var_name, var_value, flags);
 }
 
-static cvar_t *
-Cvar_Set2(const char *var_name, const char *value, qboolean force)
+cvar_t *
+Cvar_Get(const char *var_name, const char *var_value, int flags)
 {
 	cvar_t *var;
 
+	var_name = Cvar_CheckReplacements(var_name, true);
+
 	var = Cvar_FindVar(var_name);
 
-	if (!var)
+	if (var)
 	{
-		return Cvar_Get(var_name, value, 0);
+		var->flags |= flags;
+		var->default_string = Cvar_CopyString(var->default_string, var_value);
+
+		return var;
 	}
+
+	return Cvar_GetNew(var_name, var_value, flags);
+}
+
+static cvar_t *
+_Cvar_Set(cvar_t *var, const char *value, qboolean force)
+{
+	const char *var_name = var->name;
 
 	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
 	{
@@ -312,7 +341,7 @@ Cvar_Set2(const char *var_name, const char *value, qboolean force)
 
 	// if $game is the default one ("baseq2"), then use "" instead because
 	// other code assumes this behavior (e.g. FS_BuildGameSpecificSearchPath())
-	if(strcmp(var_name, "game") == 0 && strcmp(value, BASEDIRNAME) == 0)
+	if (strcmp(var_name, "game") == 0 && strcmp(value, BASEDIRNAME) == 0)
 	{
 		value = "";
 	}
@@ -385,9 +414,7 @@ Cvar_Set2(const char *var_name, const char *value, qboolean force)
 		userinfo_modified = true;
 	}
 
-	Z_Free(var->string);
-
-	var->string = CopyString(value);
+	var->string = Cvar_CopyString(var->string, value);
 	var->value = strtod(var->string, (char **)NULL);
 
 	return var;
@@ -396,19 +423,37 @@ Cvar_Set2(const char *var_name, const char *value, qboolean force)
 cvar_t *
 Cvar_ForceSet(const char *var_name, char *value)
 {
-	return Cvar_Set2(var_name, value, true);
+	cvar_t *var;
+
+	var_name = Cvar_CheckReplacements(var_name, true);
+
+	var = Cvar_FindVar(var_name);
+
+	return (!var) ?
+		Cvar_GetNew(var_name, value, 0) :
+		_Cvar_Set(var, value, true);
 }
 
 cvar_t *
 Cvar_Set(const char *var_name, const char *value)
 {
-	return Cvar_Set2(var_name, value, false);
+	cvar_t *var;
+
+	var_name = Cvar_CheckReplacements(var_name, true);
+
+	var = Cvar_FindVar(var_name);
+
+	return (!var) ?
+		Cvar_GetNew(var_name, value, 0) :
+		_Cvar_Set(var, value, false);
 }
 
 cvar_t *
 Cvar_FullSet(const char *var_name, const char *value, int flags)
 {
 	cvar_t *var;
+
+	var_name = Cvar_CheckReplacements(var_name, true);
 
 	var = Cvar_FindVar(var_name);
 
@@ -426,14 +471,12 @@ Cvar_FullSet(const char *var_name, const char *value, int flags)
 
 	// if $game is the default one ("baseq2"), then use "" instead because
 	// other code assumes this behavior (e.g. FS_BuildGameSpecificSearchPath())
-	if(strcmp(var_name, "game") == 0 && strcmp(value, BASEDIRNAME) == 0)
+	if (strcmp(var_name, "game") == 0 && strcmp(value, BASEDIRNAME) == 0)
 	{
 		value = "";
 	}
 
-	Z_Free(var->string);
-
-	var->string = CopyString(value);
+	var->string = Cvar_CopyString(var->string, value);
 	var->value = (float)strtod(var->string, (char **)NULL);
 
 	var->flags = flags;
@@ -450,7 +493,6 @@ Cvar_SetValue(const char *var_name, float value)
 	{
 		Com_sprintf(val, sizeof(val), "%i", (int)value);
 	}
-
 	else
 	{
 		Com_sprintf(val, sizeof(val), "%f", value);
@@ -492,10 +534,12 @@ Cvar_GetLatchedVars(void)
 qboolean
 Cvar_Command(void)
 {
+	const char *var_name, *var_value;
 	cvar_t *v;
 
-	/* check variables */
-	v = Cvar_FindVar(Cmd_Argv(0));
+	var_name = Cvar_CheckReplacements(Cmd_Argv(0), true);
+
+	v = Cvar_FindVar(var_name);
 
 	if (!v)
 	{
@@ -509,15 +553,18 @@ Cvar_Command(void)
 		return true;
 	}
 
+	var_value = Cmd_Argv(1);
+
 	/* Another evil hack: The user has just changed 'game' trough
 	   the console. We reset userGivenGame to that value, otherwise
 	   we would revert to the initialy given game at disconnect. */
 	if (strcmp(v->name, "game") == 0)
 	{
-		Q_strlcpy(userGivenGame, Cmd_Argv(1), sizeof(userGivenGame));
+		Q_strlcpy(userGivenGame, var_value, sizeof(userGivenGame));
 	}
 
-	Cvar_Set(v->name, Cmd_Argv(1));
+	_Cvar_Set(v, var_value, false);
+
 	return true;
 }
 
@@ -527,8 +574,8 @@ Cvar_Command(void)
 static void
 Cvar_Set_f(void)
 {
-	char *firstarg;
-	int c, i;
+	const char *firstarg;
+	int c;
 
 	c = Cmd_Argc();
 
@@ -538,16 +585,7 @@ Cvar_Set_f(void)
 		return;
 	}
 
-	firstarg = Cmd_Argv(1);
-
-	/* An ugly hack to rewrite changed CVARs */
-	for (i = 0; i < sizeof(replacements) / sizeof(replacement_t); i++)
-	{
-		if (!strcmp(firstarg, replacements[i].old))
-		{
-			firstarg = replacements[i].new;
-		}
-	}
+	firstarg = Cvar_CheckReplacements(Cmd_Argv(1), false);
 
 	if (c == 4)
 	{
@@ -557,17 +595,14 @@ Cvar_Set_f(void)
 		{
 			flags = CVAR_ARCHIVE;
 		}
-
 		else if (!strcmp(Cmd_Argv(3), "u"))
 		{
 			flags = CVAR_USERINFO;
 		}
-
 		else if (!strcmp(Cmd_Argv(3), "s"))
 		{
 			flags = CVAR_SERVERINFO;
 		}
-
 		else
 		{
 			Com_Printf("flags can only be 'a', 'u' or 's'\n");
@@ -623,7 +658,6 @@ Cvar_List_f(void)
 		{
 			Com_Printf("*");
 		}
-
 		else
 		{
 			Com_Printf(" ");
@@ -633,7 +667,6 @@ Cvar_List_f(void)
 		{
 			Com_Printf("U");
 		}
-
 		else
 		{
 			Com_Printf(" ");
@@ -643,7 +676,6 @@ Cvar_List_f(void)
 		{
 			Com_Printf("S");
 		}
-
 		else
 		{
 			Com_Printf(" ");
@@ -653,12 +685,10 @@ Cvar_List_f(void)
 		{
 			Com_Printf("-");
 		}
-
 		else if (var->flags & CVAR_LATCH)
 		{
 			Com_Printf("L");
 		}
-
 		else
 		{
 			Com_Printf(" ");
@@ -718,42 +748,47 @@ Cvar_Serverinfo(void)
 static void
 Cvar_Inc_f(void)
 {
+	const char *var_name;
 	char string[MAX_QPATH];
-    cvar_t *var;
-    float value;
+	cvar_t *var;
+	float value;
 
-    if (Cmd_Argc() < 2)
+	if (Cmd_Argc() < 2)
 	{
-        Com_Printf("Usage: %s <cvar> [value]\n", Cmd_Argv(0));
-        return;
+		Com_Printf("Usage: %s <cvar> [value]\n", Cmd_Argv(0));
+		return;
     }
 
-    var = Cvar_FindVar(Cmd_Argv(1));
+	var_name = Cvar_CheckReplacements(Cmd_Argv(1), true);
 
-    if (!var)
+	var = Cvar_FindVar(var_name);
+
+	if (!var)
 	{
-        Com_Printf("%s is not a cvar\n", Cmd_Argv(1));
-        return;
-    }
+		Com_Printf("%s is not a cvar\n", var_name);
+		return;
+	}
 
-    if (!Cvar_IsFloat(var->string))
+	if (!Cvar_IsFloat(var->string))
 	{
-        Com_Printf("\"%s\" is \"%s\", can't %s\n", var->name, var->string, Cmd_Argv(0));
-        return;
-    }
+		Com_Printf("\"%s\" is \"%s\", can't %s\n", var->name, var->string, Cmd_Argv(0));
+		return;
+	}
 
-    value = 1;
+	value = 1;
 
-    if (Cmd_Argc() > 2) {
-        value = atof(Cmd_Argv(2));
-    }
+	if (Cmd_Argc() > 2)
+	{
+		value = atof(Cmd_Argv(2));
+	}
 
-    if (!strcmp(Cmd_Argv(0), "dec")) {
-        value = -value;
-    }
+	if (!strcmp(Cmd_Argv(0), "dec"))
+	{
+		value = -value;
+	}
 
 	Com_sprintf(string, sizeof(string), "%f", var->value + value);
-    Cvar_Set(var->name, string);
+	_Cvar_Set(var, string, false);
 }
 
 /*
@@ -762,24 +797,27 @@ Cvar_Inc_f(void)
 static void
 Cvar_Reset_f(void)
 {
-    cvar_t *var;
+	const char *var_name;
+	cvar_t *var;
 
-    if (Cmd_Argc() < 2)
+	if (Cmd_Argc() < 2)
 	{
-        Com_Printf("Usage: %s <cvar>\n", Cmd_Argv(0));
-        return;
-    }
+		Com_Printf("Usage: %s <cvar>\n", Cmd_Argv(0));
+		return;
+	}
 
-    var = Cvar_FindVar(Cmd_Argv(1));
+	var_name = Cvar_CheckReplacements(Cmd_Argv(1), true);
 
-    if (!var)
+	var = Cvar_FindVar(var_name);
+
+	if (!var)
 	{
-        Com_Printf("%s is not a cvar\n", Cmd_Argv(1));
-        return;
-    }
+		Com_Printf("%s is not a cvar\n", var_name);
+		return;
+	}
 
 	Com_Printf("%s: %s\n", var->name, var->default_string);
-    Cvar_Set(var->name, var->default_string);
+	_Cvar_Set(var, var->default_string, false);
 }
 
 /*
@@ -789,21 +827,16 @@ Cvar_Reset_f(void)
 static void
 Cvar_ResetAll_f(void)
 {
-    cvar_t *var;
+	cvar_t *var;
 
-    for (var = cvar_vars; var; var = var->next)
+	for (var = cvar_vars; var; var = var->next)
 	{
-        if ((var->flags & CVAR_NOSET))
+		if (!(var->flags & CVAR_NOSET) &&
+			strcmp(var->name, "game") != 0)
 		{
-            continue;
+			_Cvar_Set(var, var->default_string, false);
 		}
-		else if (strcmp(var->name, "game") == 0)
-		{
-            continue;
-		}
-
-        Cvar_Set(var->name, var->default_string);
-    }
+	}
 }
 
 /*
@@ -812,53 +845,56 @@ Cvar_ResetAll_f(void)
 static void
 Cvar_Toggle_f(void)
 {
-    cvar_t *var;
-    int i, argc = Cmd_Argc();
+	const char *var_name;
+	cvar_t *var;
+	int i, argc = Cmd_Argc();
 
-    if (argc < 2)
+	if (argc < 2)
 	{
-        Com_Printf("Usage: %s <cvar> [values]\n", Cmd_Argv(0));
-        return;
-    }
+		Com_Printf("Usage: %s <cvar> [values]\n", Cmd_Argv(0));
+		return;
+	}
 
-    var = Cvar_FindVar(Cmd_Argv(1));
+	var_name = Cvar_CheckReplacements(Cmd_Argv(1), true);
 
-    if (!var)
+	var = Cvar_FindVar(var_name);
+
+	if (!var)
 	{
-        Com_Printf("%s is not a cvar\n", Cmd_Argv(1));
-        return;
-    }
+		Com_Printf("%s is not a cvar\n", var_name);
+		return;
+	}
 
-    if (argc < 3)
+	if (argc < 3)
 	{
-        if (!strcmp(var->string, "0"))
+		if (!strcmp(var->string, "0"))
 		{
-            Cvar_Set(var->name, "1");
-        }
+			_Cvar_Set(var, "1", false);
+		}
 		else if (!strcmp(var->string, "1"))
 		{
-            Cvar_Set(var->name, "0");
-        }
+			_Cvar_Set(var, "0", false);
+		}
 		else
 		{
             Com_Printf("\"%s\" is \"%s\", can't toggle\n", var->name, var->string);
-        }
+		}
 
-        return;
-    }
+		return;
+	}
 
-    for (i = 0; i < argc - 2; i++)
+	for (i = 0; i < argc - 2; i++)
 	{
-        if (!Q_stricmp(var->string, Cmd_Argv(2 + i)))
+		if (!Q_stricmp(var->string, Cmd_Argv(2 + i)))
 		{
-            i = (i + 1) % (argc - 2);
-            Cvar_Set(var->name, Cmd_Argv(2 + i));
+			i = (i + 1) % (argc - 2);
+			_Cvar_Set(var, Cmd_Argv(2 + i), false);
 
-            return;
-        }
-    }
+			return;
+		}
+	}
 
-    Com_Printf("\"%s\" is \"%s\", can't cycle\n", var->name, var->string);
+	Com_Printf("\"%s\" is \"%s\", can't cycle\n", var->name, var->string);
 }
 
 /*
@@ -867,6 +903,8 @@ Cvar_Toggle_f(void)
 void
 Cvar_Init(void)
 {
+	cvar_vars = NULL;
+
 	Cmd_AddCommand("cvarlist", Cvar_List_f);
 	Cmd_AddCommand("dec", Cvar_Inc_f);
 	Cmd_AddCommand("inc", Cvar_Inc_f);
@@ -882,17 +920,36 @@ Cvar_Init(void)
 void
 Cvar_Fini(void)
 {
-	cvar_t *var;
+	cvar_t *var, *next;
 
 	for (var = cvar_vars; var;)
 	{
-		cvar_t *c = var->next;
-		Z_Free(var->string);
-		Z_Free(var->name);
-		Z_Free(var->default_string);
+		if (var->string)
+		{
+			Z_Free(var->string);
+		}
+
+		if (var->name)
+		{
+			Z_Free(var->name);
+		}
+
+		if (var->default_string)
+		{
+			Z_Free(var->default_string);
+		}
+
+		if (var->latched_string)
+		{
+			Z_Free(var->latched_string);
+		}
+
+		next = var->next;
 		Z_Free(var);
-		var = c;
+		var = next;
 	}
+
+	cvar_vars = NULL;
 
 	Cmd_RemoveCommand("cvarlist");
 	Cmd_RemoveCommand("dec");
