@@ -791,7 +791,7 @@ Cmd_CompleteCommand(const char *partial)
 	size_t len;
 	int i, o, p;
 	cmdalias_t *a;
-	cvar_t *cvar;
+	const cvar_t *cvar;
 	const char **pmatch;
 	qboolean diff = false;
 
@@ -1040,7 +1040,7 @@ Cmd_IsComplete(const char *command)
 {
 	cmd_function_t *cmd;
 	cmdalias_t *a;
-	cvar_t *cvar;
+	const cvar_t *cvar;
 
 	/* check for exact match */
 	for (cmd = cmd_functions; cmd; cmd = cmd->next)
