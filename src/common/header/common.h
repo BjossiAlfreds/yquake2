@@ -102,6 +102,7 @@ void SZ_Clear(sizebuf_t *buf);
 void *SZ_GetSpace(sizebuf_t *buf, int length);
 void SZ_Write(sizebuf_t *buf, const void *data, int length);
 void SZ_Print(sizebuf_t *buf, const char *data);  /* strcats onto the sizebuf */
+int Z_BlockSize(const void *ptr);
 
 /* ================================================================== */
 
@@ -453,7 +454,7 @@ void Cmd_ForwardToServer(void);
  * interface from being ambiguous.
  */
 
-extern cvar_t *cvar_vars;
+cvar_t *cvar_vars;
 
 cvar_t *Cvar_Get(const char *var_name, const char *value, int flags);
 
