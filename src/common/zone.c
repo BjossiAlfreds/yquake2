@@ -186,3 +186,23 @@ Z_Realloc(void *ptr, int size)
 	return Z_TagRealloc(ptr, size, 0);
 }
 
+int
+Z_BlockSize(const void *ptr)
+{
+	const zhead_t *z;
+
+	if (!ptr)
+	{
+		return 0;
+	}
+
+	z = (const zhead_t *)ptr - 1;
+
+	if (z->magic != Z_MAGIC)
+	{
+		return 0;
+	}
+
+	return z->size - sizeof(*z);
+}
+
