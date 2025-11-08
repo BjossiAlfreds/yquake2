@@ -453,7 +453,7 @@ void Cmd_ForwardToServer(void);
  * interface from being ambiguous.
  */
 
-extern cvar_t *cvar_vars;
+cvar_t *cvar_vars;
 
 cvar_t *Cvar_Get(const char *var_name, const char *value, int flags);
 
