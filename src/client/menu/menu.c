@@ -664,7 +664,7 @@ InitMainMenu(void)
 		"m_main_options",
 		"m_main_video",
 		"m_main_quit",
-		0
+		NULL
 	};
 
 	for (i = 0; names[i] != 0; i++)
@@ -689,7 +689,7 @@ InitMainMenu(void)
 	s_plaque.generic.x = (x - (m_cursor_width + 5) - w);
 	s_plaque.generic.y = y;
 	s_plaque.generic.name = "m_main_plaque";
-	s_plaque.generic.callback = 0;
+	s_plaque.generic.callback = NULL;
 	s_plaque.focuspic = 0;
 
 	s_logo.generic.type = MTYPE_BITMAP;
@@ -697,7 +697,7 @@ InitMainMenu(void)
 	s_logo.generic.x = (x - (m_cursor_width + 5) - w);
 	s_logo.generic.y = y + h + 5;
 	s_logo.generic.name = "m_main_logo";
-	s_logo.generic.callback = 0;
+	s_logo.generic.callback = NULL;
 	s_logo.focuspic = 0;
 
 	y += 10;
@@ -1750,7 +1750,7 @@ Stick_MenuInit(void)
 		"southpaw",
 		"legacy",
 		"legacy southpaw",
-		0
+		NULL
 	};
 
 	static const char *stick_layouts_fs[] =
@@ -1761,7 +1761,7 @@ Stick_MenuInit(void)
 		"legacy southpaw",
 		"flick stick",
 		"flick stick spaw",
-		0
+		NULL
 	};
 
 	unsigned short int y = 0, i;
@@ -1992,7 +1992,7 @@ Gyro_MenuInit(void)
 		"off, button enables",
 		"on, button disables",
 		"always on",
-		0
+		NULL
 	};
 
 	static const char *gyro_space_choices[] =
@@ -2000,7 +2000,7 @@ Gyro_MenuInit(void)
 		"local",
 		"player",
 		"world",
-		0
+		NULL
 	};
 
 	static const char *gyro_local_roll_choices[] =
@@ -2008,14 +2008,14 @@ Gyro_MenuInit(void)
 		"off",
 		"on",
 		"on, invert",
-		0
+		NULL
 	};
 
 	static const char *onoff_names[] =
 	{
 		"off",
 		"on",
-		0
+		NULL
 	};
 
 	unsigned short int y = 0;
@@ -2288,7 +2288,7 @@ Joy_MenuInit(void)
 	{
 		"no",
 		"yes",
-		0
+		NULL
 	};
 
 	static const char *custom_names[] =
@@ -2296,7 +2296,7 @@ Joy_MenuInit(void)
 		"",
 		"custom",
 		"",
-		0,
+		NULL
 	};
 
 	extern qboolean show_haptic;
@@ -2659,26 +2659,26 @@ Options_MenuInit(void)
 		"sequential",
 		"random",
 		"truly random",
-		0
+		NULL
 	};
 
 	static const char *able_items[] =
 	{
 		"disabled",
 		"enabled",
-		0
+		NULL
 	};
 
 	static const char *sound_items[] =
 	{
-		"openal", "sdl", 0
+		"openal", "sdl", NULL
 	};
 
 	static const char *yesno_names[] =
 	{
 		"no",
 		"yes",
-		0
+		NULL
 	};
 
 	static const char* pause_names[] =
@@ -2686,7 +2686,7 @@ Options_MenuInit(void)
 		"yes",
 		"no",
 		"unpause on re-focus",
-		0
+		NULL
 	};
 
 	static const char *crosshair_names[] =
@@ -2695,7 +2695,7 @@ Options_MenuInit(void)
 		"cross",
 		"dot",
 		"angle",
-		0
+		NULL
 	};
 
 	float scale = SCR_GetMenuScale();
@@ -2986,7 +2986,7 @@ static const char *idcredits[] = {
 	"trademark of Activision, Inc. All",
 	"other trademarks and trade names are",
 	"properties of their respective owners.",
-	0
+	NULL
 };
 
 static const char *xatcredits[] =
@@ -3127,7 +3127,7 @@ static const char *xatcredits[] =
 	"Inc. All other trademarks and trade",
 	"names are properties of their",
 	"respective owners.",
-	0
+	NULL
 };
 
 static const char *roguecredits[] =
@@ -4899,14 +4899,15 @@ StartServer_MenuInit(void)
 	{
 		"deathmatch",
 		"cooperative",
-		0
+		NULL
 	};
+
 	static const char *dm_coop_names_rogue[] =
 	{
 		"deathmatch",
 		"cooperative",
 		"tag",
-		0
+		NULL
 	};
 
 	float scale = SCR_GetMenuScale();
@@ -5323,12 +5324,14 @@ DMOptions_MenuInit(void)
 {
 	static const char *yes_no_names[] =
 	{
-		"no", "yes", 0
+		"no", "yes", NULL
 	};
+
 	static const char *teamplay_names[] =
 	{
-		"disabled", "by skin", "by model", 0
+		"disabled", "by skin", "by model", NULL
 	};
+
 	int dmflags = Cvar_VariableValue("dmflags");
 	unsigned short int y = 0;
 
@@ -5645,8 +5648,9 @@ DownloadOptions_MenuInit(void)
 {
 	static const char *yes_no_names[] =
 	{
-		"no", "yes", 0
+		"no", "yes", NULL
 	};
+
 	unsigned short int y = 0;
 	float scale = SCR_GetMenuScale();
 
@@ -5789,8 +5793,8 @@ AddressBook_MenuInit(void)
 		f = &s_addressbook_fields[i];
 
 		f->generic.type = MTYPE_FIELD;
-		f->generic.name = 0;
-		f->generic.callback = 0;
+		f->generic.name = NULL;
+		f->generic.callback = NULL;
 		f->generic.x = 0;
 		f->generic.y = i * 18 + 0;
 		f->generic.localdata[0] = i;
@@ -5988,8 +5992,13 @@ static strlist_t s_directory;
 static char player_icon_path[MAX_QPATH];
 
 static int rate_tbl[] = {2500, 3200, 5000, 10000, 25000, 0};
-static const char *rate_names[] = {"28.8 Modem", "33.6 Modem", "Single ISDN",
-								   "Dual ISDN/Cable", "T1/LAN", "User defined", 0 };
+static const char *rate_names[] =
+{
+	"28.8 Modem", "33.6 Modem",
+	"Single ISDN", "Dual ISDN/Cable",
+	"T1/LAN", "User defined",
+	NULL
+};
 
 static void
 DownloadOptionsFunc(void *self)
@@ -6531,7 +6540,7 @@ PlayerConfig_MenuInit(void)
 	extern cvar_t *name;
 	const extern cvar_t *skin;
 	cvar_t *hand = Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
-	static const char *handedness[] = { "right", "left", "center", 0 };
+	static const char *handedness[] = { "right", "left", "center", NULL};
 	char mdlname[MAX_QPATH];
 	char imgname[MAX_QPATH];
 	int mdlindex = 0;
@@ -6586,7 +6595,7 @@ PlayerConfig_MenuInit(void)
 
 	s_player_name_field.generic.type = MTYPE_FIELD;
 	s_player_name_field.generic.name = "name";
-	s_player_name_field.generic.callback = 0;
+	s_player_name_field.generic.callback = NULL;
 	s_player_name_field.generic.x = 0;
 	s_player_name_field.generic.y = 0;
 	s_player_name_field.length = 20;
@@ -6600,7 +6609,7 @@ PlayerConfig_MenuInit(void)
 	s_player_icon_bitmap.generic.x = ((viddef.width / scale - 95) / 2) - 87;
 	s_player_icon_bitmap.generic.y = ((viddef.height / (2 * scale))) - 72;
 	s_player_icon_bitmap.generic.name = player_icon_path;
-	s_player_icon_bitmap.generic.callback = 0;
+	s_player_icon_bitmap.generic.callback = NULL;
 	s_player_icon_bitmap.focuspic = 0;
 
 	s_player_model_title.generic.type = MTYPE_SEPARATOR;
@@ -6624,7 +6633,7 @@ PlayerConfig_MenuInit(void)
 	s_player_skin_box.generic.type = MTYPE_SPINCONTROL;
 	s_player_skin_box.generic.x = -56 * scale;
 	s_player_skin_box.generic.y = 94;
-	s_player_skin_box.generic.name = 0;
+	s_player_skin_box.generic.name = NULL;
 	s_player_skin_box.generic.callback = SkinCallback;
 	s_player_skin_box.generic.cursor_offset = -48;
 	s_player_skin_box.curvalue = imgindex;
@@ -6641,7 +6650,7 @@ PlayerConfig_MenuInit(void)
 	s_player_handedness_box.generic.type = MTYPE_SPINCONTROL;
 	s_player_handedness_box.generic.x = -56 * scale;
 	s_player_handedness_box.generic.y = 118;
-	s_player_handedness_box.generic.name = 0;
+	s_player_handedness_box.generic.name = NULL;
 	s_player_handedness_box.generic.cursor_offset = -48;
 	s_player_handedness_box.generic.callback = HandednessCallback;
 	s_player_handedness_box.curvalue = ClampCvar(0, 2, hand->value);
@@ -6663,7 +6672,7 @@ PlayerConfig_MenuInit(void)
 	s_player_rate_box.generic.type = MTYPE_SPINCONTROL;
 	s_player_rate_box.generic.x = -56 * scale;
 	s_player_rate_box.generic.y = 166;
-	s_player_rate_box.generic.name = 0;
+	s_player_rate_box.generic.name = NULL;
 	s_player_rate_box.generic.cursor_offset = -48;
 	s_player_rate_box.generic.callback = RateCallback;
 	s_player_rate_box.curvalue = i;
