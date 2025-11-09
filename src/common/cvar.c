@@ -125,20 +125,13 @@ Cvar_CopyString(char *old_value, const char *new_value)
 }
 
 static qboolean
-Cvar_InfoValidate(const char *s)
+Cvar_InfoValidate(const char *var_name, const char *var_value)
 {
-	if (strstr(s, "\\"))
-	{
-		return false;
-	}
+	char *hit = Q_strchrs(var_value, "\"\\;");
 
-	if (strstr(s, "\""))
+	if (hit)
 	{
-		return false;
-	}
-
-	if (strstr(s, ";"))
-	{
+		Com_Printf("info cvar '%s' not set: value contains: '%c'\n", var_name, *hit);
 		return false;
 	}
 
@@ -288,9 +281,8 @@ Cvar_GetNew(const char *var_name, const char *var_value, int flags)
 
 	if (flags & (CVAR_USERINFO | CVAR_SERVERINFO))
 	{
-		if (!Cvar_InfoValidate(var_value))
+		if (!Cvar_InfoValidate(var_name, var_value))
 		{
-			Com_Printf("invalid info cvar value\n");
 			return NULL;
 		}
 	}
@@ -332,9 +324,8 @@ _Cvar_Set(cvar_t *var, const char *value, qboolean force)
 
 	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
 	{
-		if (!Cvar_InfoValidate(value))
+		if (!Cvar_InfoValidate(var_name, value))
 		{
-			Com_Printf("invalid info cvar value\n");
 			return var;
 		}
 	}
