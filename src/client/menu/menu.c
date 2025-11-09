@@ -6002,9 +6002,11 @@ HandednessCallback(void *unused)
 static void
 RateCallback(void *unused)
 {
-	if (s_player_rate_box.curvalue != ARRLEN(rate_tbl) - 1)
+	int i = s_player_rate_box.curvalue;
+
+	if (i < ARRLEN(rate_tbl))
 	{
-		Cvar_SetValue("rate", (float)rate_tbl[s_player_rate_box.curvalue]);
+		Cvar_SetValue("rate", rate_tbl[i]);
 	}
 }
 
@@ -6521,6 +6523,26 @@ ListModels_f(void)
 	PlayerModelFree();
 }
 
+static int
+GetRateSelectionIndex(void)
+{
+	int i, curvalue;
+
+	curvalue = Cvar_VariableValue("rate");
+
+	for (i = 0; i < (sizeof(rate_tbl) / sizeof(*rate_tbl)); i++)
+	{
+		if (curvalue == rate_tbl[i])
+		{
+			break;
+		}
+	}
+
+	/* i == rate_tbl length is "User defined" */
+
+	return i;
+}
+
 static qboolean
 PlayerConfig_MenuInit(void)
 {
@@ -6532,7 +6554,6 @@ PlayerConfig_MenuInit(void)
 	char imgname[MAX_QPATH];
 	int mdlindex = 0;
 	int imgindex = 0;
-	int i = 0;
 	float scale = SCR_GetMenuScale();
 
 	if (PlayerConfig_ScanDirectories() == false)
@@ -6643,14 +6664,6 @@ PlayerConfig_MenuInit(void)
 	s_player_handedness_box.curvalue = ClampCvar(0, 2, hand->value);
 	s_player_handedness_box.itemnames = handedness;
 
-	for (i = 0; i < ARRLEN(rate_tbl) - 1; i++)
-	{
-		if (Cvar_VariableValue("rate") == rate_tbl[i])
-		{
-			break;
-		}
-	}
-
 	s_player_rate_title.generic.type = MTYPE_SEPARATOR;
 	s_player_rate_title.generic.name = "connect speed";
 	s_player_rate_title.generic.x = 56 * scale;
@@ -6662,7 +6675,7 @@ PlayerConfig_MenuInit(void)
 	s_player_rate_box.generic.name = NULL;
 	s_player_rate_box.generic.cursor_offset = -48;
 	s_player_rate_box.generic.callback = RateCallback;
-	s_player_rate_box.curvalue = i;
+	s_player_rate_box.curvalue = GetRateSelectionIndex();
 	s_player_rate_box.itemnames = rate_names;
 
 	s_player_download_action.generic.type = MTYPE_ACTION;
