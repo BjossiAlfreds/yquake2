@@ -3435,26 +3435,31 @@ Mods_NamesInit(void)
 static void
 ModsListFunc(void *unused)
 {
-	if (strcmp(BASEDIRNAME, modnames[s_mods_list.curvalue]) == 0)
+	const char *s;
+	const char *modname = modnames[s_mods_list.curvalue];
+
+	if (strcmp(BASEDIRNAME, modname) == 0)
 	{
-		strcpy(mods_statusbar, "Quake II");
+		s = "Quake II";
 	}
-	else if (strcmp("ctf", modnames[s_mods_list.curvalue]) == 0)
+	else if (strcmp("ctf", modname) == 0)
 	{
-		strcpy(mods_statusbar, "Quake II Capture The Flag");
+		s = "Quake II Capture The Flag";
 	}
-	else if (strcmp("rogue", modnames[s_mods_list.curvalue]) == 0)
+	else if (strcmp("rogue", modname) == 0)
 	{
-		strcpy(mods_statusbar, "Quake II Mission Pack: Ground Zero");
+		s = "Quake II Mission Pack: Ground Zero";
 	}
-	else if (strcmp("xatrix", modnames[s_mods_list.curvalue]) == 0)
+	else if (strcmp("xatrix", modname) == 0)
 	{
-		strcpy(mods_statusbar, "Quake II Mission Pack: The Reckoning");
+		s = "Quake II Mission Pack: The Reckoning";
 	}
 	else
 	{
-		strcpy(mods_statusbar, "\0");
+		s = "";
 	}
+
+	Q_strlcpy(mods_statusbar, s, sizeof(mods_statusbar));
 }
 
 static void
@@ -4520,6 +4525,34 @@ RulesChangeFunc(void *self)
 	}
 }
 
+static const char *
+GetStartSpot(const char *startmap)
+{
+	const char **s;
+
+	static const char *spots[] =
+	{
+		"bunk1", "start",
+		"mintro", "start",
+		"fact1", "start",
+		"power1", "pstart",
+		"biggun", "bstart",
+		"hangar1", "unitstart",
+		"city1", "unitstart",
+		"boss1", "bosstart"
+	};
+
+	for (s = spots; s < &spots[(sizeof(spots) / sizeof(*spots)) & ~1]; s += 2)
+	{
+		if (!Q_stricmp(startmap, *s))
+		{
+			return *(s + 1);
+		}
+	}
+
+	return NULL;
+}
+
 static void
 StartServerActionFunc(void *self)
 {
@@ -4527,7 +4560,7 @@ StartServerActionFunc(void *self)
 	float timelimit;
 	float fraglimit;
 	float maxclients;
-	char *spot;
+	const char *spot;
 
 	Q_strlcpy(startmap, strchr(mapnames[s_startmap_list.curvalue], '\n') + 1,
 		sizeof(startmap));
@@ -4562,50 +4595,8 @@ StartServerActionFunc(void *self)
 		Cvar_SetValue("coop", 0); /* This works for at least the main game and both addons */
 	}
 
-	spot = NULL;
-
-	if (s_rules_box.curvalue == 1)
-	{
-		if (Q_stricmp(startmap, "bunk1") == 0)
-		{
-			spot = "start";
-		}
-
-		else if (Q_stricmp(startmap, "mintro") == 0)
-		{
-			spot = "start";
-		}
-
-		else if (Q_stricmp(startmap, "fact1") == 0)
-		{
-			spot = "start";
-		}
-
-		else if (Q_stricmp(startmap, "power1") == 0)
-		{
-			spot = "pstart";
-		}
-
-		else if (Q_stricmp(startmap, "biggun") == 0)
-		{
-			spot = "bstart";
-		}
-
-		else if (Q_stricmp(startmap, "hangar1") == 0)
-		{
-			spot = "unitstart";
-		}
-
-		else if (Q_stricmp(startmap, "city1") == 0)
-		{
-			spot = "unitstart";
-		}
-
-		else if (Q_stricmp(startmap, "boss1") == 0)
-		{
-			spot = "bosstart";
-		}
-	}
+	spot = (s_rules_box.curvalue == 1) ?
+		GetStartSpot(startmap) : NULL;
 
 	if (spot)
 	{
