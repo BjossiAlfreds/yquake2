@@ -195,9 +195,20 @@ PF_setmodel(edict_t *ent, char *name)
 static void
 PF_Configstring(int index, char *val)
 {
+	size_t len;
+	char *cs;
+
 	if ((index < 0) || (index >= MAX_CONFIGSTRINGS))
 	{
-		Com_Error(ERR_DROP, "configstring: bad index %i\n", index);
+		Com_Printf("%s: bad index %i\n", __func__, index);
+		return;
+	}
+
+	if ((index > CS_STATUSBAR) && (index < CS_STATUSBAR_END))
+	{
+		Com_Printf("%s: %i: indices %i-%i are reserved for statusbar code\n",
+			__func__, index, CS_STATUSBAR + 1, CS_STATUSBAR_END - 1);
+		return;
 	}
 
 	if (!val)
@@ -205,8 +216,31 @@ PF_Configstring(int index, char *val)
 		val = "";
 	}
 
-	/* change the string in sv */
-	strcpy(sv.configstrings[index], val);
+	len = strlen(val);
+	cs = sv.configstrings[index];
+
+	if (index == CS_STATUSBAR)
+	{
+		if (len >= CS_STATUSBAR_SPACE)
+		{
+			Com_Printf("%s: statusbar code too big: %u > %u\n",
+				__func__, len, CS_STATUSBAR_SPACE - 1);
+			return;
+		}
+
+		memcpy(cs, val, len + 1);
+	}
+	else
+	{
+		if (len >= sizeof(sv.configstrings[0]))
+		{
+			Com_Printf("%s; value too big: %u > %u\n",
+				__func__, len, sizeof(sv.configstrings[0]) - 1);
+			return;
+		}
+
+		strcpy(cs, val);
+	}
 
 	if (sv.state != ss_loading)
 	{
