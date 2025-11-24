@@ -182,14 +182,31 @@ SV_Configstrings_f(void)
 			MSG_WriteConfigString(msg, i, cs);
 		}
 
-		i++;
+		/* statusbar code is sent as one big string */
+		if (i == CS_STATUSBAR)
+		{
+			i = CS_STATUSBAR_END;
+		}
+		else
+		{
+			i++;
+		}
 	}
 
 	if ((i == start) && (i < MAX_CONFIGSTRINGS))
 	{
 		Com_Printf("%s: skipping index %i: too big to send\n",
 			__func__, i);
-		i++;
+
+		/* statusbar code is sent as one big string */
+		if (i == CS_STATUSBAR)
+		{
+			i = CS_STATUSBAR_END;
+		}
+		else
+		{
+			i++;
+		}
 	}
 
 	/* send next command */
