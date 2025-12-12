@@ -6523,6 +6523,58 @@ ListModels_f(void)
 	PlayerModelFree();
 }
 
+static char *
+GetModelStrings(const char *from, char *buf, size_t buf_sz)
+{
+	char *sep;
+
+	if (from)
+	{
+		Q_strlcpy(buf, from, buf_sz);
+
+		sep = strchr(buf, '/');
+		if (!sep)
+		{
+			sep = strchr(buf, '\\');
+		}
+
+		if (sep)
+		{
+			*sep = '\0';
+			return sep + 1;
+		}
+	}
+
+	Q_strlcpy(buf, "male", buf_sz);
+
+	return "grunt";
+}
+
+static void
+GetModelIndexes(const char *from, int *mdlindex, int *imgindex)
+{
+	char *img, mdl[MAX_QPATH];
+	int i, m;
+
+	*mdlindex = 0;
+	*imgindex = 0;
+
+	img = GetModelStrings(from, mdl, sizeof(mdl));
+
+	m = StrList_Find(&s_modelname, mdl);
+
+	if (StrList_ValidIndex(&s_modelname, m))
+	{
+		i = StrList_Find(&s_skinnames[m], img);
+
+		if (StrList_ValidIndex(&s_skinnames[m], i))
+		{
+			*mdlindex = m;
+			*imgindex = i;
+		}
+	}
+}
+
 static int
 GetRateSelectionIndex(void)
 {
@@ -6547,50 +6599,17 @@ static qboolean
 PlayerConfig_MenuInit(void)
 {
 	extern cvar_t *name;
-	const extern cvar_t *skin;
 	cvar_t *hand = Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
 	static const char *handedness[] = { "right", "left", "center", NULL};
-	char mdlname[MAX_QPATH];
-	char imgname[MAX_QPATH];
-	int mdlindex = 0;
-	int imgindex = 0;
+	int mdlindex, imgindex;
 	float scale = SCR_GetMenuScale();
 
-	if (PlayerConfig_ScanDirectories() == false)
+	if (!PlayerConfig_ScanDirectories())
 	{
 		return false;
 	}
 
-	Q_strlcpy(mdlname, skin->string, sizeof(mdlname));
-	ReplaceCharacters(mdlname, '\\', '/' );
-
-	if (strchr(mdlname, '/'))
-	{
-		Q_strlcpy(imgname, strchr(mdlname, '/') + 1, sizeof(imgname));
-		*strchr(mdlname, '/') = 0;
-	}
-	else
-	{
-		strcpy(mdlname, "male\0");
-		strcpy(imgname, "grunt\0");
-	}
-
-	mdlindex = StrList_Find(&s_modelname, mdlname);
-
-	if (StrList_ValidIndex(&s_modelname, mdlindex))
-	{
-		imgindex = StrList_Find(&s_skinnames[mdlindex], imgname);
-
-		if (!StrList_ValidIndex(&s_skinnames[mdlindex], imgindex))
-		{
-			imgindex = 0;
-		}
-	}
-	else
-	{
-		mdlindex = 0;
-		imgindex = 0;
-	}
+	GetModelIndexes(Cvar_VariableString("skin"), &mdlindex, &imgindex);
 
 	if (hand->value < 0 || hand->value > 2)
 	{
