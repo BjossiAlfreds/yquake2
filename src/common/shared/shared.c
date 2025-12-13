@@ -1234,13 +1234,25 @@ Q_strlwr ( char *s )
 {
 	char *p = s;
 
-	while ( *s )
+	for (; *s != '\0'; s++)
 	{
 		*s = tolower( (unsigned char)*s );
-		s++;
 	}
 
-	return ( p );
+	return p;
+}
+
+char *
+Q_strupr(char *s)
+{
+	char *p = s;
+
+	for (; *s != '\0'; s++)
+	{
+		*s = toupper(*s);
+	}
+
+	return p;
 }
 
 int
