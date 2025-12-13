@@ -4484,9 +4484,275 @@ M_Menu_JoinServer_f(void)
  * START SERVER MENU
  */
 
+/* maplist_t API */
+
+typedef struct
+{
+	char **names;
+	int n;
+} maplist_t;
+
+#define MapList_IsEmpty(ml) ((ml)->n <= 0)
+
+static void
+MapList_Free(maplist_t *ml)
+{
+	size_t i;
+
+	if (ml->names)
+	{
+		for (i = 0; i < ml->n; i++)
+		{
+			if (ml->names[i])
+			{
+				Z_Free(ml->names[i]);
+			}
+		}
+
+		Z_Free(ml->names);
+		ml->names = NULL;
+	}
+
+	ml->n = 0;
+}
+
+static const char *
+MapList_GetMapnameAt(const maplist_t *ml, int index)
+{
+	const char *m;
+
+	if ((index < 0) || (index >= ml->n))
+	{
+		return NULL;
+	}
+
+	m = strchr(ml->names[index], '\n');
+
+	return m ? (m + 1) : NULL;
+}
+
+static int
+MapList_Find(const maplist_t *ml, const char *name)
+{
+	int i;
+	char *currname;
+
+	for (i = 0; i < ml->n; i++)
+	{
+		if (!ml->names[i])
+		{
+			continue;
+		}
+
+		currname = strchr(ml->names[i], '\n');
+		if (!currname)
+		{
+			continue;
+		}
+
+		currname++;
+
+		if (!Q_stricmp(currname, name))
+		{
+			return i;
+		}
+	}
+
+	return ml->n;
+}
+
+static qboolean
+MapList_IsInList(const maplist_t *ml, const char *name)
+{
+	return (MapList_Find(ml, name) < ml->n) ? true : false;
+}
+
+static int
+_MapList_NumLstEntries(const char *s, int len)
+{
+	int i, c = 0;
+
+	for (i = 0; i < len; i++)
+	{
+		if (s[i] == '\n')
+		{
+			c++;
+		}
+	}
+
+	return c;
+}
+
+static void
+MapList_FromLst(maplist_t *ml)
+{
+	char *buffer;
+	int length;
+	char **names;
+	char *s, *m, sn[MAX_QPATH];
+	const char *tok;
+	size_t snl, lnl;
+	int i, nmaps;
+
+	ml->names = NULL;
+	ml->n = 0;
+
+	if ((length = FS_LoadFile("maps.lst", (void **)&buffer)) == -1)
+	{
+		return;
+	}
+
+	nmaps = _MapList_NumLstEntries(buffer, length);
+	if (!nmaps)
+	{
+		Com_Printf("no maps in maps.lst\n");
+		return;
+	}
+
+	names = Z_Malloc((nmaps + 1) * sizeof(char *));
+
+	s = buffer;
+
+	for (i = 0; i < nmaps; i++)
+	{
+		tok = COM_Parse(&s);
+		if (Q_strlcpy(sn, tok, sizeof(sn)) >= sizeof(sn))
+		{
+			strcpy(sn, "na");
+		}
+
+		snl = strlen(sn);
+		Q_strupr(sn);
+
+		tok = COM_Parse(&s);
+		lnl = strlen(tok);
+
+		m = Z_Malloc(snl + lnl + 2);
+
+		strcpy(m, tok);
+		m[lnl] = '\n';
+		strcpy(&m[lnl + 1], sn);
+
+		names[i] = m;
+	}
+
+	names[nmaps] = NULL;
+
+	FS_FreeFile(buffer);
+
+	ml->names = names;
+	ml->n = nmaps;
+}
+
+static void
+MapList_FromFolder(maplist_t *ml)
+{
+	char **list = NULL, **names;
+	int num = 0, i;
+
+	ml->names = NULL;
+	ml->n = 0;
+
+	/* Generate list by bsp files in maps/ directory */
+
+	list = FS_ListFiles2("maps/*.bsp", &num, 0, 0);
+	if (!list)
+	{
+		Com_Printf("couldn't find maps/*.bsp\n");
+		return;
+	}
+
+	names = Z_Malloc(num * sizeof(char *));
+
+	for (i = 0; i < (num - 1); i++)
+	{
+		char sn[MAX_QPATH], *m;
+		int len;
+
+		len = strlen(list[i]);
+		if (len > 9 && len < MAX_QPATH)
+		{
+			/* maps/ + .bsp */
+			Q_strlcpy(sn, list[i] + 5, sizeof(sn));
+			sn[len - 9] = '\0';
+			len = strlen(sn);
+
+			m = Z_Malloc((len * 2) + 2);
+
+			strcpy(m, sn);
+			m[len] = '\n';
+			strcpy(&m[len + 1], sn);
+
+			names[i] = m;
+		}
+	}
+
+	names[num - 1] = NULL;
+
+	qsort(names, num - 1, sizeof(char*), Q_sort_stricmp);
+
+	FS_FreeList(list, num);
+
+	ml->names = names;
+	ml->n = num - 1;
+}
+
+static void
+MapList_Complete(maplist_t *ml)
+{
+	maplist_t ml_folder, ml_lst;
+	size_t currpos;
+
+	ml->names = NULL;
+	ml->n = 0;
+
+	MapList_FromFolder(&ml_folder);
+	if (MapList_IsEmpty(&ml_folder))
+	{
+		return;
+	}
+
+	MapList_FromLst(&ml_lst);
+	if (MapList_IsEmpty(&ml_lst))
+	{
+		*ml = ml_folder;
+		return;
+	}
+
+	/* we have maps in file and in folder */
+
+	ml_lst.names = Z_Realloc(ml_lst.names, sizeof(char *) * (ml_folder.n + ml_lst.n));
+
+	for (currpos = 0; currpos < ml_folder.n; currpos++)
+	{
+		char *foldername;
+
+		foldername = strchr(ml_folder.names[currpos], '\n');
+		if (!foldername)
+		{
+			continue;
+		}
+
+		foldername++;
+
+		if (!MapList_IsInList(&ml_lst, foldername))
+		{
+			ml_lst.names[ml_lst.n] = ml_folder.names[currpos];
+			ml_folder.names[currpos] = NULL; /* makes sure the string is not freed below */
+
+			ml_lst.n++;
+		}
+	}
+
+	MapList_Free(&ml_folder);
+
+	ml_lst.names[ml_lst.n] = NULL;
+
+	*ml = ml_lst;
+}
+
 static menuframework_s s_startserver_menu;
-static char **mapnames = NULL;
-static int nummaps;
+static maplist_t maplist;
 
 static menuaction_s s_startserver_start_action;
 static menuaction_s s_startserver_dmoptions_action;
@@ -4556,14 +4822,19 @@ GetStartSpot(const char *startmap)
 static void
 StartServerActionFunc(void *self)
 {
-	char startmap[1024];
 	float timelimit;
 	float fraglimit;
 	float maxclients;
-	const char *spot;
+	const char *spot, *startmap;
 
-	Q_strlcpy(startmap, strchr(mapnames[s_startmap_list.curvalue], '\n') + 1,
-		sizeof(startmap));
+	startmap = MapList_GetMapnameAt(&maplist, s_startmap_list.curvalue);
+
+	if (!startmap)
+	{
+		Com_Printf("%s: unable to get startmap at index %d\n",
+			__func__, s_startmap_list.curvalue);
+		return;
+	}
 
 	maxclients = (float)strtod(s_maxclients_field.buffer, (char **)NULL);
 	timelimit = (float)strtod(s_timelimit_field.buffer, (char **)NULL);
@@ -4618,265 +4889,10 @@ StartServerActionFunc(void *self)
 void
 CleanCachedMapsList(void)
 {
-	if (mapnames != NULL)
-	{
-		size_t i;
+	MapList_Free(&maplist);
 
-		for (i = 0; i < nummaps; i++)
-		{
-			free(mapnames[i]);
-		}
-
-		free(mapnames);
-		mapnames = NULL;
-	}
-}
-
-static char**
-GetMapsList(int *num)
-{
-	int length;
-	char *buffer;
-
-	/* load the list of map names */
-	if ((length = FS_LoadFile("maps.lst", (void **)&buffer)) != -1)
-	{
-		char **mapnames = NULL;
-		size_t nummapslen;
-		int i, nummaps = 0;
-
-		char *s;
-
-		s = buffer;
-		i = 0;
-
-		while (i < length)
-		{
-			if (s[i] == '\n')
-			{
-				nummaps++;
-			}
-
-			i++;
-		}
-
-		if (nummaps == 0)
-		{
-			Com_Printf("no maps in maps.lst\n");
-			/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-			return NULL;
-		}
-
-		nummapslen = sizeof(char *) * (nummaps + 1);
-		mapnames = malloc(nummapslen);
-
-		YQ2_COM_CHECK_OOM(mapnames, "malloc(sizeof(char *) * (nummaps + 1))", nummapslen)
-		if (!mapnames)
-		{
-			/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-			return NULL;
-		}
-
-		memset(mapnames, 0, nummapslen);
-
-		s = buffer;
-
-		for (i = 0; i < nummaps; i++)
-		{
-			char shortname[MAX_TOKEN_CHARS];
-			char longname[MAX_TOKEN_CHARS];
-			char scratch[200];
-			size_t j, l;
-
-			Q_strlcpy(shortname, COM_Parse(&s), sizeof(shortname));
-			l = strlen(shortname);
-
-			for (j = 0; j < l; j++)
-			{
-				shortname[j] = toupper((unsigned char)shortname[j]);
-			}
-
-			Q_strlcpy(longname, COM_Parse(&s), sizeof(longname));
-			Com_sprintf(scratch, sizeof(scratch), "%s\n%s", longname, shortname);
-
-			mapnames[i] = strdup(scratch);
-			YQ2_COM_CHECK_OOM(mapnames[i], "strdup(scratch)", strlen(scratch)+1)
-			if (!mapnames[i])
-			{
-				free(mapnames);
-				/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-				return NULL;
-			}
-		}
-
-		mapnames[nummaps] = NULL;
-		FS_FreeFile(buffer);
-
-		*num = nummaps;
-		return mapnames;
-	}
-
-	return NULL;
-}
-
-static char**
-GetMapsInFolderList(int *nummaps)
-{
-	/* Generate list by bsp files in maps/ directory */
-	size_t nummapslen;
-	char **list = NULL, **mapnames = NULL;
-	int num = 0, i;
-
-	list = FS_ListFiles2("maps/*.bsp", &num, 0, 0);
-	if (!list)
-	{
-		Com_Printf("couldn't find maps/*.bsp\n");
-		/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-		return NULL;
-	}
-
-	nummapslen = sizeof(char *) * (num);
-	mapnames = malloc(nummapslen);
-	YQ2_COM_CHECK_OOM(mapnames, "malloc(sizeof(char *) * (num))", nummapslen)
-	if (!mapnames)
-	{
-		FS_FreeList(list, num);
-		/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-		return NULL;
-	}
-
-	memset(mapnames, 0, nummapslen);
-
-	for (i = 0; i < num - 1; i++)
-	{
-		char scratch[200], shortname[MAX_QPATH];
-		int len;
-
-		len = strlen(list[i]);
-		if (len > 9 && len < MAX_QPATH)
-		{
-			/* maps/ + .bsp */
-			Q_strlcpy(shortname, list[i] + 5, sizeof(shortname));
-			shortname[len - 9]  = 0;
-
-			Com_sprintf(scratch, sizeof(scratch), "%s\n%s", shortname, shortname);
-
-			mapnames[i] = strdup(scratch);
-			YQ2_COM_CHECK_OOM(mapnames[i], "strdup(scratch)", strlen(scratch)+1)
-			if (!mapnames[i])
-			{
-				/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-				return NULL;
-			}
-		}
-	}
-
-	mapnames[num - 1] = NULL;
-
-	/* sort maps names alphabetically */
-	qsort(mapnames, num - 1, sizeof(char*), Q_sort_stricmp);
-
-	/* free file list */
-	FS_FreeList(list, num);
-	*nummaps = num - 1;
-
-	return mapnames;
-}
-
-static char**
-GetCombinedMapsList(int *nummaps)
-{
-	char **mapnames_list = NULL, **mapnames_folder = NULL, **mapnames = NULL;
-	int nummaps_list = 0, nummaps_folder = 0;
-	size_t nummapslen, currpos;
-
-	mapnames_folder = GetMapsInFolderList(&nummaps_folder);
-	if (!mapnames_folder)
-	{
-		/* no maps at all? */
-		return NULL;
-	}
-
-	mapnames_list = GetMapsList(&nummaps_list);
-	if (!mapnames_list)
-	{
-		/* no maps in list? */
-		*nummaps = nummaps_folder;
-		return mapnames_folder;
-	}
-
-	/* we have maps in file and in folder */
-	nummapslen = sizeof(char *) * (nummaps_list + nummaps_folder + 1);
-	mapnames = malloc(nummapslen);
-	YQ2_COM_CHECK_OOM(mapnames, "malloc(sizeof(char *) * (num))", nummapslen)
-	if (!mapnames)
-	{
-		size_t i;
-
-		for (i = 0; i < nummaps_list; i++)
-		{
-			free(mapnames_list[i]);
-		}
-
-		free(mapnames_list);
-		/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-		*nummaps = nummaps_folder;
-		return mapnames_folder;
-	}
-
-	memset(mapnames, 0, nummapslen);
-	memcpy(mapnames, mapnames_list, sizeof(char *) * nummaps_list);
-	*nummaps = nummaps_list;
-	free(mapnames_list);
-
-	for (currpos = 0; currpos < nummaps_folder; currpos ++)
-	{
-		qboolean found;
-		char *foldername;
-		size_t i;
-
-		foldername = strchr(mapnames_folder[currpos], '\n');
-		if (!foldername)
-		{
-			free(mapnames_folder[currpos]);
-			continue;
-		}
-		foldername++;
-
-		found = false;
-		for (i = 0; i < *nummaps; i++)
-		{
-			char *currname;
-
-			currname = strchr(mapnames[i], '\n');
-			if (!currname)
-			{
-				continue;
-			}
-			currname++;
-
-			if (!Q_stricmp(currname, foldername))
-			{
-				found = true;
-				break;
-			}
-		}
-
-		if (!found)
-		{
-			mapnames[*nummaps] = mapnames_folder[currpos];
-			(*nummaps) ++;
-		}
-		else
-		{
-			free(mapnames_folder[currpos]);
-		}
-	}
-
-	mapnames[*nummaps] = NULL;
-
-	free(mapnames_folder);
-	return mapnames;
+	s_startmap_list.curvalue = 0;
+	s_startmap_list.itemnames = NULL;
 }
 
 static void
@@ -4900,17 +4916,15 @@ StartServer_MenuInit(void)
 	float scale = SCR_GetMenuScale();
 
 	/* initialize list of maps once, reuse it afterwards (=> it isn't freed unless the game dir is changed) */
-	if (mapnames == NULL)
+	if (MapList_IsEmpty(&maplist))
 	{
-		nummaps = 0;
 		s_startmap_list.curvalue = 0;
 
-		mapnames = GetCombinedMapsList(&nummaps);
+		MapList_Complete(&maplist);
 
-		if (!mapnames || !nummaps)
+		if (MapList_IsEmpty(&maplist))
 		{
-			Com_Error(ERR_DROP, "no maps in maps.lst\n");
-			return;
+			Com_Printf("%s: no maps were found\n", __func__);
 		}
 	}
 
@@ -4920,14 +4934,9 @@ StartServer_MenuInit(void)
 
 	s_startmap_list.generic.type = MTYPE_SPINCONTROL;
 	s_startmap_list.generic.x = 0;
-
-	if (M_IsGame("ctf"))
-		s_startmap_list.generic.y = -8;
-	else
-		s_startmap_list.generic.y = 0;
-
+	s_startmap_list.generic.y = M_IsGame("ctf") ? -8 : 0;
 	s_startmap_list.generic.name = "initial map";
-	s_startmap_list.itemnames = (const char **)mapnames;
+	s_startmap_list.itemnames = (const char **)maplist.names;
 
 	if (M_IsGame("ctf"))
 	{
