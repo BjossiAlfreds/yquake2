@@ -3402,34 +3402,128 @@ static menulist_s s_mods_list;
 static menuaction_s s_mods_apply_action;
 static char mods_statusbar[64];
 
-static char **modnames = NULL;
+static char **modnames = NULL; /* folder names */
+static char **moddnames = NULL; /* display names */
 static int nummods;
 
 void
 Mods_NamesFinish(void)
 {
+	 int i;
+
+	/* folder names, allocated with malloc */
 	if (modnames)
 	{
-		int i;
-
 		for (i = 0; i < nummods; i ++)
 		{
-			free(modnames[i]);
+			if (modnames[i])
+			{
+				free(modnames[i]);
+			}
 		}
 
 		free(modnames);
 		modnames = NULL;
 	}
+
+	/* display names, allocated with zone allocator */
+	if (moddnames)
+	{
+		for (i = 0; i < nummods; i ++)
+		{
+			if (moddnames[i])
+			{
+				Z_Free(moddnames[i]);
+			}
+		}
+
+		Z_Free(moddnames);
+		moddnames = NULL;
+	}
+
+	nummods = 0;
+
+	s_mods_list.curvalue = 0;
+	s_mods_list.itemnames = NULL;
+}
+
+#define MODS_DISPLAYNAME_MAXLEN 15
+
+static char **
+Mods_DisplayNames(void)
+{
+	const char *n;
+	char **names, *dn;
+	int i, j, len;
+
+	/* create array of bracketed display names from folder names - TG626 */
+
+	names = Z_Malloc(sizeof(char *) * (nummods + 1));
+
+	for (i = 0; i < nummods; i++)
+	{
+		n = modnames[i];
+
+		if (!n)
+		{
+			continue;
+		}
+
+		dn = Z_Malloc(MODS_DISPLAYNAME_MAXLEN + 6);
+		strcpy(dn, "[");
+
+		len = strlen(n);
+
+		if (len <= MODS_DISPLAYNAME_MAXLEN)
+		{
+			strcat(dn, n);
+
+			for (j = 0; j < (MODS_DISPLAYNAME_MAXLEN - len); j++)
+			{
+				strcat(dn, " ");
+			}
+		}
+		else
+		{
+			strncat(dn, n, MODS_DISPLAYNAME_MAXLEN - 3);
+			strcat(dn, "...");
+		}
+
+		strcat(dn, "]");
+
+		names[i] = dn;
+	}
+
+	names[nummods] = NULL;
+
+	return names;
 }
 
 static void
 Mods_NamesInit(void)
 {
 	/* initialize list of mods once, reuse it afterwards */
-	if (modnames == NULL)
+	if (nummods <= 0)
 	{
 		modnames = FS_ListMods(&nummods);
+		moddnames = Mods_DisplayNames();
 	}
+}
+
+static int
+Mods_GetSelection(void)
+{
+	int currmod;
+
+	for (currmod = 0; currmod < nummods; currmod++)
+	{
+		if (M_IsGame(modnames[currmod]))
+		{
+			return currmod;
+		}
+	}
+
+	return 0;
 }
 
 static void
@@ -3465,81 +3559,42 @@ ModsListFunc(void *unused)
 static void
 ModsApplyActionFunc(void *unused)
 {
-	if (!M_IsGame(modnames[s_mods_list.curvalue]))
+	char *mn;
+	int i = s_mods_list.curvalue;
+
+	if ((i < 0) || (i >= nummods))
 	{
-		if(Com_ServerState())
-		{
-			// equivalent to "killserver" cmd, but avoids cvar latching below
-			SV_Shutdown("Server is changing games.\n", false);
-			NET_Config(false);
-		}
-
-		// called via command buffer so that any running server has time to shutdown
-		Cbuf_AddText(va("game %s\n", modnames[s_mods_list.curvalue]));
-
-		// start the demo cycle in the new game directory
-		menu_startdemoloop = true;
-
-		M_ForceMenuOff();
+		return;
 	}
+
+	mn = modnames[i];
+	if (!mn || M_IsGame(mn))
+	{
+		return;
+	}
+
+	if(Com_ServerState())
+	{
+		// equivalent to "killserver" cmd, but avoids cvar latching below
+		SV_Shutdown("Server is changing games.\n", false);
+		NET_Config(false);
+	}
+
+	// called via command buffer so that any running server has time to shutdown
+	Cbuf_AddText(va("game %s\n", mn));
+
+	// start the demo cycle in the new game directory
+	menu_startdemoloop = true;
+
+	M_ForceMenuOff();
 }
 
 static void
 Mods_MenuInit(void)
 {
-	int currentmod, x = 0, y = 0, i;
-	char modname[MAX_QPATH]; /* TG626 */
-	char **displaynames;
+	int x = 0, y = 0;
 
 	Mods_NamesInit();
-
-	/* create array of bracketed display names from folder names - TG626 */
-	displaynames = malloc(sizeof(*displaynames) * (nummods + 1));
-	YQ2_COM_CHECK_OOM(displaynames, "malloc()", sizeof(*displaynames) * (nummods + 1))
-	if (!displaynames)
-	{
-		/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-		return;
-	}
-
-	for (i = 0; i < nummods; i++)
-	{
-		strcpy(modname, "[");
-		if (strlen(modnames[i]) < 16)
-		{
-			strcat(modname, modnames[i]);
-			for (int j=0; j < 15 - strlen(modnames[i]); j++)
-			{
-				strcat(modname, " ");
-			}
-		}
-		else
-		{
-			strncat(modname, modnames[i], 12);
-			strcat(modname, "...");
-		}
-		strcat(modname, "]");
-
-		displaynames[i] = strdup(modname);
-		YQ2_COM_CHECK_OOM(displaynames[i], "strdup()", strlen(modname) + 1)
-		if (!displaynames[i])
-		{
-			/* unaware about YQ2_ATTR_NORETURN_FUNCPTR? */
-			return;
-		}
-	}
-
-	displaynames[nummods] = NULL;
-	/* end TG626 */
-
-	/* pre-select the current mod for display in the list */
-	for (currentmod = 0; currentmod < nummods; currentmod++)
-	{
-		if (M_IsGame(modnames[currentmod]))
-		{
-			break;
-		}
-	}
 
 	s_mods_menu.x = viddef.width * 0.50;
 	s_mods_menu.nitems = 0;
@@ -3549,8 +3604,8 @@ Mods_MenuInit(void)
 	s_mods_list.generic.x = x;
 	s_mods_list.generic.y = y;
 	s_mods_list.generic.callback = ModsListFunc;
-	s_mods_list.itemnames = (const char **)displaynames;
-	s_mods_list.curvalue = currentmod < nummods ? currentmod : 0;
+	s_mods_list.itemnames = (const char **)moddnames;
+	s_mods_list.curvalue = Mods_GetSelection();
 
 	y += 20;
 
