@@ -694,6 +694,7 @@ plat_spawn_inside_trigger(edict_t *ent)
 
 	/* middle trigger */
 	trigger = G_Spawn();
+	trigger->classname = "plat_trigger";
 	trigger->touch = Touch_Plat_Center;
 	trigger->movetype = MOVETYPE_NONE;
 	trigger->solid = SOLID_TRIGGER;
@@ -1607,6 +1608,7 @@ Think_SpawnDoorTrigger(edict_t *ent)
 	maxs[1] += 60;
 
 	other = G_Spawn();
+	other->classname = "door_trigger";
 	VectorCopy(mins, other->mins);
 	VectorCopy(maxs, other->maxs);
 	other->owner = ent;
