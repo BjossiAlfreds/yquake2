@@ -1442,126 +1442,305 @@ Cmd_SpawnOnStart_f(edict_t *ent)
 	}
 }
 
+/* listentities
+ */
+#define LISTENT_MISC 1
+#define LISTENT_AMMO 2
+#define LISTENT_ARMOR 4
+#define LISTENT_HEALTH 8
+#define LISTENT_POWERUPS 16
+#define LISTENT_WEAPONS 32
+#define LISTENT_KEYS 64
+#define LISTENT_MONSTERS 128
+
+#define LISTENT_MASK_ITEMS 60
+#define LISTENT_MASK_ALL 255
+
+typedef struct
+{
+	int showflags;
+	qboolean show_frac;
+	const char *cn;
+	float dist;
+} cmd_listentities_cfg;
+
+static const char *
+Cmd_ListEntities_ParseArgs(cmd_listentities_cfg *cfg)
+{
+	const char *arg;
+	int i, argc = gi.argc();
+
+	memset(cfg, 0, sizeof(*cfg));
+
+	for (i = 1; i < argc; i++)
+	{
+		arg = gi.argv(i);
+
+		if (Q_stricmp(arg, "all") == 0)
+		{
+			cfg->showflags |= LISTENT_MASK_ALL;
+		}
+		else if (Q_stricmp(arg, "ammo") == 0)
+		{
+			cfg->showflags |= LISTENT_AMMO;
+		}
+		else if (Q_stricmp(arg, "armor") == 0)
+		{
+			cfg->showflags |= LISTENT_ARMOR;
+		}
+		else if (Q_stricmp(arg, "health") == 0)
+		{
+			cfg->showflags |= LISTENT_HEALTH;
+		}
+		else if (Q_stricmp(arg, "weapons") == 0)
+		{
+			cfg->showflags |= LISTENT_WEAPONS;
+		}
+		else if (Q_stricmp(arg, "powerups") == 0)
+		{
+			cfg->showflags |= LISTENT_POWERUPS;
+		}
+		else if (Q_stricmp(arg, "keys") == 0)
+		{
+			cfg->showflags |= LISTENT_KEYS;
+		}
+		else if (Q_stricmp(arg, "items") == 0)
+		{
+			cfg->showflags |= LISTENT_MASK_ITEMS;
+		}
+		else if (Q_stricmp(arg, "keys") == 0)
+		{
+			cfg->showflags |= LISTENT_KEYS;
+		}
+		else if (Q_stricmp(arg, "monsters") == 0)
+		{
+			cfg->showflags |= LISTENT_MONSTERS;
+		}
+		else if (Q_stricmp(arg, "misc") == 0)
+		{
+			cfg->showflags |= LISTENT_MISC;
+		}
+		else if (Q_stricmp(arg, "frac") == 0)
+		{
+			cfg->show_frac = true;
+		}
+		else if (strstr(arg, "dist=") == arg)
+		{
+			cfg->dist = strtod(arg + 5, NULL);
+		}
+		else if (strstr(arg, "cn=") == arg)
+		{
+			cfg->cn = arg + 3;
+		}
+		else
+		{
+			return arg;
+		}
+	}
+
+	return NULL;
+}
+
+static void
+_GetEntOrigin(const edict_t *e, vec3_t out)
+{
+	if (e->model && *e->model == '*')
+	{
+		VectorMA(e->absmin, 0.5f, e->size, out);
+		VectorAdd(out, e->s.origin, out);
+	}
+	else if (!VectorCompare(e->s.origin, vec3_origin))
+	{
+		VectorCopy(e->s.origin, out);
+	}
+	else
+	{
+		VectorMA(e->absmin, 0.5f, e->size, out);
+	}
+}
+
+static qboolean
+Cmd_ListEntities_IsPrint(const edict_t *e, const cmd_listentities_cfg *cfg)
+{
+	const char *cn;
+	qboolean is_misc;
+	int itfl, show;
+
+	if (!e->inuse)
+	{
+		return false;
+	}
+
+	is_misc = true;
+	show = cfg->showflags;
+
+	cn = e->classname;
+	if (!cn)
+	{
+		cn = "";
+	}
+
+	if (cfg->cn && *cfg->cn != '\0')
+	{
+		if (!strstr(cn, cfg->cn))
+		{
+			return false;
+		}
+	}
+
+	itfl = (e->item && e->item->classname && strcmp(cn, e->item->classname) == 0) ?
+		e->item->flags : 0;
+
+	if (itfl & IT_AMMO)
+	{
+		if (show & LISTENT_AMMO)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if (itfl & IT_ARMOR)
+	{
+		if (show & LISTENT_ARMOR)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if (strstr(cn, "item_health") == cn)
+	{
+		if (show & LISTENT_HEALTH)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if (itfl & IT_POWERUP)
+	{
+		if (show & LISTENT_POWERUPS)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if ((itfl & (IT_WEAPON|IT_AMMO)) == IT_WEAPON)
+	{
+		if (show & LISTENT_WEAPONS)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if (itfl & IT_KEY)
+	{
+		if (show & LISTENT_KEYS)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	if (strncmp(cn, "monster_", 8) == 0 ||
+		strcmp(cn, "misc_insane") == 0 ||
+		strcmp(cn, "turret_driver") == 0)
+	{
+		if (show & LISTENT_MONSTERS)
+		{
+			return true;
+		}
+
+		is_misc = false;
+	}
+
+	return (is_misc && (show & LISTENT_MISC)) ? true : false;
+}
+
+static qboolean
+Cmd_ListEntities_InRange(const edict_t *e, const vec3_t pl_origin, float dist)
+{
+	vec3_t tmp;
+
+	if (dist <= 0.0f)
+	{
+		return true;
+	}
+
+	ClosestPointOnBounds(pl_origin, e->absmin, e->absmax, tmp);
+	VectorSubtract(pl_origin, tmp, tmp);
+
+	return (VectorLength(tmp) <= dist) ? true : false;
+}
+
 static void
 Cmd_ListEntities_f(edict_t *ent)
 {
+	cmd_listentities_cfg cfg;
+	const char *badarg;
+
 	if ((deathmatch->value || coop->value) && !sv_cheats->value)
 	{
 		gi.cprintf(ent, PRINT_HIGH, "You must run the server with '+set cheats 1' to enable this command.\n");
 		return;
 	}
 
-	if (gi.argc() < 2)
+	badarg = Cmd_ListEntities_ParseArgs(&cfg);
+	if (badarg)
 	{
-		gi.cprintf(ent, PRINT_HIGH, "Usage: listentities <all|ammo|items|keys|monsters|weapons>\n");
+		gi.cprintf(ent, PRINT_HIGH, "unknown argument: '%s'\n", badarg);
 		return;
 	}
 
-	/* What to print? */
-	qboolean all = false;
-	qboolean ammo = false;
-	qboolean items = false;
-	qboolean keys = false;
-	qboolean monsters = false;
-	qboolean weapons = false;
-
-	for (int i = 1; i < gi.argc(); i++)
+	if (!(cfg.showflags & LISTENT_MASK_ALL))
 	{
-		const char *arg = gi.argv(i);
+		if (cfg.dist <= 0.0f && !cfg.cn)
+		{
+			gi.cprintf(ent, PRINT_HIGH, "Usage: listentities [filters|frac]\n"
+				"  filters: all|armor|health|powerups|\n"
+				"    weapons|keys|items|\n"
+				"    dist=<value>|cn=<keyword>\n");
+			return;
+		}
 
-		if (Q_stricmp(arg, "all") == 0)
-		{
-			all = true;
-		}
-		else if (Q_stricmp(arg, "ammo") == 0)
-		{
-			ammo = true;
-		}
-		else if (Q_stricmp(arg, "items") == 0)
-		{
-			items = true;
-		}
-		else if (Q_stricmp(arg, "keys") == 0)
-		{
-			keys = true;
-		}
-		else if (Q_stricmp(arg, "monsters") == 0)
-		{
-			monsters = true;
-		}
-		else if (Q_stricmp(arg, "weapons") == 0)
-		{
-			weapons = true;
-		}
-		else
-		{
-			gi.cprintf(ent, PRINT_HIGH, "Usage: listentities <all|ammo|items|keys|monsters|weapons>\n");
-		}
+		cfg.showflags |= LISTENT_MASK_ALL;
 	}
 
-	/* Print what's requested. */
-	for (int i = 0; i < globals.num_edicts; i++)
+	for (edict_t *e = g_edicts; e < &g_edicts[globals.num_edicts]; e++)
 	{
-		edict_t *cur = &g_edicts[i];
-		qboolean print = false;
+		vec3_t origin;
 
-		/* Ensure that the entity is valid. */
-		if (!cur->classname)
+		if (!Cmd_ListEntities_IsPrint(e, &cfg))
 		{
 			continue;
 		}
 
-		if (all)
+		if (!Cmd_ListEntities_InRange(e, ent->s.origin, cfg.dist))
 		{
-			print = true;
+			continue;
+		}
+
+		_GetEntOrigin(e, origin);
+
+		/* We use dprintf() because cprintf() may flood the server... */
+		if (cfg.show_frac)
+		{
+			gi.dprintf("%s: %f %f %f\n",
+				e->classname, origin[0], origin[1], origin[2]);
 		}
 		else
 		{
-			if (ammo)
-			{
-				if (strncmp(cur->classname, "ammo_", 5) == 0)
-				{
-					print = true;
-				}
-			}
-
-			if (items)
-			{
-				if (strncmp(cur->classname, "item_", 5) == 0)
-				{
-					print = true;
-				}
-			}
-
-			if (keys)
-			{
-				if (strncmp(cur->classname, "key_", 4) == 0)
-				{
-					print = true;
-				}
-			}
-
-			if (monsters)
-			{
-				if (strncmp(cur->classname, "monster_", 8) == 0)
-				{
-					print = true;
-				}
-			}
-
-			if (weapons)
-			{
-				if (strncmp(cur->classname, "weapon_", 7) == 0)
-				{
-					print = true;
-				}
-			}
-		}
-
-		if (print)
-		{
-			/* We use dprintf() because cprintf() may flood the server... */
-			gi.dprintf("%s: %f %f %f\n", cur->classname, cur->s.origin[0], cur->s.origin[1], cur->s.origin[2]);
+			gi.dprintf("%s: %i %i %i\n",
+				e->classname, (int)origin[0], (int)origin[1], (int)origin[2]);
 		}
 	}
 }
