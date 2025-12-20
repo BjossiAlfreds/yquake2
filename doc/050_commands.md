@@ -20,11 +20,21 @@ original clients (Vanilla Quake II) commands are still in place.
   between `coop`, `dm` and `sp` without having to set three cvars the
   correct way. `?` prints the current mode.
 
-* **listentities <class>**: Lists the coordinates of all entities of a
-  given class.  Possible classes are `ammo`, `items`, `keys`, `monsters`
-  and `weapons`. Multiple classes can be given, they're separated by
-  whitespaces. The special class `all` lists the coordinates of all
-  entities.
+* **listentities <filters|frac>**: Lists the coordinates of all entities
+  given one or more filters. Possible filters are `ammo`, `armor`,
+  `health`, `powerups`, `keys`, `weapons`, `items` (classname item_*),
+  `monsters`, `misc` and `freed`.
+  There are also two value filters: `dist=<value>` and `cn=<keyword>`.
+  `dist` filters out entities that are further than `<value>` units away.
+  `cn` filters out entities that don't contain `<keyword>` inside classname.
+  `dist` and `cn` are exclusion filters while the others are
+  inclusion-based.
+  'frac' displays entity coordinate values with fractions,
+  otherwise only the integer part is printed.
+  Multiple filters can be given, they're separated by
+  whitespaces. The special filter `all` lists the coordinates of all
+  entities. Example: `listentities cn=gladiator dist=128`
+  lists all monster_gladiator within 128 units from player
 
 * **viewpos**: Show player position.
 
