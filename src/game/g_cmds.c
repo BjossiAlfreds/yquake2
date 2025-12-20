@@ -1452,6 +1452,7 @@ Cmd_SpawnOnStart_f(edict_t *ent)
 #define LISTENT_WEAPONS 32
 #define LISTENT_KEYS 64
 #define LISTENT_MONSTERS 128
+#define LISTENT_FREED 256
 
 #define LISTENT_MASK_ITEMS 60
 #define LISTENT_MASK_ALL 255
@@ -1520,6 +1521,10 @@ Cmd_ListEntities_ParseArgs(cmd_listentities_cfg *cfg)
 		{
 			cfg->showflags |= LISTENT_MISC;
 		}
+		else if (strstr(arg, "freed") == arg)
+		{
+			cfg->showflags |= LISTENT_FREED;
+		}
 		else if (Q_stricmp(arg, "frac") == 0)
 		{
 			cfg->show_frac = true;
@@ -1559,17 +1564,31 @@ _GetEntOrigin(const edict_t *e, vec3_t out)
 	}
 }
 
+static void
+_GetEntPrintName(const edict_t *e, char *buf, size_t buf_sz)
+{
+	if (!e->classname)
+	{
+		Q_strlcpy(buf, "(null)", buf_sz);
+		return;
+	}
+
+	if (!e->inuse && e->message)
+	{
+		Com_sprintf(buf, buf_sz, "freed(%s)", e->message);
+		return;
+	}
+
+	Q_strlcpy(buf, e->classname, buf_sz);
+}
+
 static qboolean
 Cmd_ListEntities_IsPrint(const edict_t *e, const cmd_listentities_cfg *cfg)
 {
 	const char *cn;
+	const gitem_t *it;
 	qboolean is_misc;
 	int itfl, show;
-
-	if (!e->inuse)
-	{
-		return false;
-	}
 
 	is_misc = true;
 	show = cfg->showflags;
@@ -1580,6 +1599,25 @@ Cmd_ListEntities_IsPrint(const edict_t *e, const cmd_listentities_cfg *cfg)
 		cn = "";
 	}
 
+	if (!e->inuse)
+	{
+		if (!(show & LISTENT_FREED))
+		{
+			return false;
+		}
+
+		if (e->message && strcmp(cn, "freed") == 0)
+		{
+			cn = e->message;
+		}
+
+		/* show all freed ents if freed is the only filterword */
+		if (!(show & LISTENT_MASK_ALL))
+		{
+			show |= LISTENT_MASK_ALL;
+		}
+	}
+
 	if (cfg->cn && *cfg->cn != '\0')
 	{
 		if (!strstr(cn, cfg->cn))
@@ -1588,8 +1626,8 @@ Cmd_ListEntities_IsPrint(const edict_t *e, const cmd_listentities_cfg *cfg)
 		}
 	}
 
-	itfl = (e->item && e->item->classname && strcmp(cn, e->item->classname) == 0) ?
-		e->item->flags : 0;
+	it = FindItemByClassname(cn);
+	itfl = it ? it->flags : 0;
 
 	if (itfl & IT_AMMO)
 	{
@@ -1701,7 +1739,7 @@ Cmd_ListEntities_f(edict_t *ent)
 		return;
 	}
 
-	if (!(cfg.showflags & LISTENT_MASK_ALL))
+	if (!(cfg.showflags & (LISTENT_MASK_ALL|LISTENT_FREED)))
 	{
 		if (cfg.dist <= 0.0f && !cfg.cn)
 		{
@@ -1718,6 +1756,7 @@ Cmd_ListEntities_f(edict_t *ent)
 	for (edict_t *e = g_edicts; e < &g_edicts[globals.num_edicts]; e++)
 	{
 		vec3_t origin;
+		char name[64];
 
 		if (!Cmd_ListEntities_IsPrint(e, &cfg))
 		{
@@ -1730,17 +1769,18 @@ Cmd_ListEntities_f(edict_t *ent)
 		}
 
 		_GetEntOrigin(e, origin);
+		_GetEntPrintName(e, name, sizeof(name));
 
 		/* We use dprintf() because cprintf() may flood the server... */
 		if (cfg.show_frac)
 		{
 			gi.dprintf("%s: %f %f %f\n",
-				e->classname, origin[0], origin[1], origin[2]);
+				name, origin[0], origin[1], origin[2]);
 		}
 		else
 		{
 			gi.dprintf("%s: %i %i %i\n",
-				e->classname, (int)origin[0], (int)origin[1], (int)origin[2]);
+				name, (int)origin[0], (int)origin[1], (int)origin[2]);
 		}
 	}
 }
