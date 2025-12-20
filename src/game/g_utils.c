@@ -505,6 +505,7 @@ G_InitEdict(edict_t *e)
 
 	e->inuse = true;
 	e->classname = "noclass";
+	e->message = NULL;
 	e->gravity = 1.0;
 	e->s.number = e - g_edicts;
 }
@@ -581,6 +582,8 @@ G_Spawn(void)
 void
 G_FreeEdict(edict_t *ed)
 {
+	char *cn;
+
 	if (!ed)
 	{
 		return;
@@ -603,8 +606,11 @@ G_FreeEdict(edict_t *ed)
 		}
 	}
 
+	cn = ed->classname;
+
 	memset(ed, 0, sizeof(*ed));
 	ed->classname = "freed";
+	ed->message = cn;
 	ed->freetime = level.time;
 	ed->inuse = false;
 }
