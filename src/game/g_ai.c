@@ -954,7 +954,7 @@ hesDeadJim(const edict_t *self)
 
 	if (self->monsterinfo.aiflags & AI_MEDIC)
 	{
-		return (enemy->health > 0);
+		return (enemy->health > 0) || (enemy->health <= enemy->gib_health);
 	}
 
 	if (enemy->client && level.intermissiontime)
@@ -968,6 +968,29 @@ hesDeadJim(const edict_t *self)
 	}
 
 	return (enemy->health <= 0);
+}
+
+static void
+stop_heal(edict_t *self)
+{
+	edict_t *patient;
+
+	if (!self || !(self->monsterinfo.aiflags & AI_MEDIC))
+	{
+		return;
+	}
+
+	patient = self->enemy;
+
+	if (patient && patient->inuse && patient->owner == self)
+	{
+		patient->owner = NULL;
+		patient->monsterinfo.aiflags &= ~AI_RESURRECTING;
+		M_SetEffects(patient);
+	}
+
+	self->enemy = NULL;
+	self->monsterinfo.aiflags &= ~AI_MEDIC;
 }
 
 qboolean
@@ -1028,8 +1051,9 @@ ai_checkattack(edict_t *self)
 	/* see if the enemy is dead */
 	if (hesDeadJim(self))
 	{
+		stop_heal(self);
+
 		self->enemy = NULL;
-		self->monsterinfo.aiflags &= ~AI_MEDIC;
 
 		if (self->oldenemy && (self->oldenemy->health > 0))
 		{
