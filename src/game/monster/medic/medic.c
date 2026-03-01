@@ -895,6 +895,10 @@ medic_cable_attack(edict_t *self)
 			self->enemy->enemy = self->oldenemy;
 			FoundTarget(self->enemy);
 		}
+		else if (self->enemy->enemy)
+		{
+			FoundTarget(self->enemy);
+		}
 	}
 	else
 	{
