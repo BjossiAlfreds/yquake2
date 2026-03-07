@@ -818,30 +818,35 @@ static vec3_t medic_cable_offsets[] = {
 void
 medic_cable_attack(edict_t *self)
 {
-	vec3_t offset, start, end, f, r;
+	edict_t *patient;
+	vec3_t start, end, f, r;
 	trace_t tr;
 	vec3_t dir, angles;
-	float distance;
 
 	if (!self)
 	{
 		return;
 	}
 
-	if (!self->enemy->inuse)
+	patient = self->enemy;
+
+	if (!(self->monsterinfo.aiflags & AI_MEDIC) ||
+		!patient || !patient->inuse || patient->owner != self ||
+		patient->health <= patient->gib_health)
 	{
+		self->monsterinfo.nextframe = FRAME_attack52;
 		return;
 	}
 
 	AngleVectors(self->s.angles, f, r, NULL);
-	VectorCopy(medic_cable_offsets[self->s.frame - FRAME_attack42], offset);
-	G_ProjectSource(self->s.origin, offset, f, r, start);
+	G_ProjectSource(self->s.origin,
+		medic_cable_offsets[self->s.frame - FRAME_attack42],
+		f, r, start);
 
 	/* check for max distance */
-	VectorSubtract(start, self->enemy->s.origin, dir);
-	distance = VectorLength(dir);
+	VectorSubtract(start, patient->s.origin, dir);
 
-	if (distance > 256)
+	if (VectorLength(dir) > 256)
 	{
 		return;
 	}
@@ -859,67 +864,63 @@ medic_cable_attack(edict_t *self)
 		return;
 	}
 
-	tr = gi.trace(start, NULL, NULL, self->enemy->s.origin, self, MASK_SHOT);
+	tr = gi.trace(start, NULL, NULL, patient->s.origin, self, MASK_SHOT);
 
-	if ((tr.fraction != 1.0) && (tr.ent != self->enemy))
+	if ((tr.fraction != 1.0) && (tr.ent != patient))
 	{
 		return;
 	}
 
 	if (self->s.frame == FRAME_attack43)
 	{
-		gi.sound(self->enemy, CHAN_AUTO, sound_hook_hit, 1, ATTN_NORM, 0);
-		self->enemy->monsterinfo.aiflags |= AI_RESURRECTING;
-		M_SetEffects(self->enemy);
+		gi.sound(patient, CHAN_AUTO, sound_hook_hit, 1, ATTN_NORM, 0);
+		patient->monsterinfo.aiflags |= AI_RESURRECTING;
+		M_SetEffects(patient);
 	}
 	else if (self->s.frame == FRAME_attack50)
 	{
-		self->enemy->s.effects &= ~EF_FLIES;
-		self->enemy->s.sound = 0;
+		patient->s.effects &= ~EF_FLIES;
+		patient->s.sound = 0;
 
-		self->enemy->spawnflags = 0;
-		self->enemy->monsterinfo.aiflags = 0;
-		self->enemy->target = NULL;
-		self->enemy->targetname = NULL;
-		self->enemy->combattarget = NULL;
-		self->enemy->deathtarget = NULL;
-		self->enemy->owner = self;
-		ED_CallSpawn(self->enemy);
-		self->enemy->owner = NULL;
+		patient->spawnflags = 0;
+		patient->monsterinfo.aiflags = 0;
+		patient->target = NULL;
+		patient->targetname = NULL;
+		patient->combattarget = NULL;
+		patient->deathtarget = NULL;
 
-		if (self->enemy->think)
+		ED_CallSpawn(patient);
+
+		if (patient->think)
 		{
-			self->enemy->nextthink = level.time;
-			self->enemy->think(self->enemy);
+			patient->nextthink = level.time;
+			patient->think(patient);
 		}
 
-		self->enemy->monsterinfo.aiflags |= AI_RESURRECTING;
-		M_SetEffects(self->enemy);
+		patient->monsterinfo.aiflags |= AI_RESURRECTING;
+		M_SetEffects(patient);
 
 		if (self->oldenemy && self->oldenemy->client)
 		{
-			self->enemy->enemy = self->oldenemy;
-			FoundTarget(self->enemy);
+			patient->enemy = self->oldenemy;
+			FoundTarget(patient);
 		}
-		else if (self->enemy->enemy)
+		else if (patient->enemy)
 		{
-			FoundTarget(self->enemy);
+			FoundTarget(patient);
 		}
 	}
-	else
+	else if (self->s.frame == FRAME_attack44)
 	{
-		if (self->s.frame == FRAME_attack44)
-		{
-			gi.sound(self, CHAN_WEAPON, sound_hook_heal, 1, ATTN_NORM, 0);
-		}
+		gi.sound(self, CHAN_WEAPON, sound_hook_heal, 1, ATTN_NORM, 0);
 	}
 
 	/* adjust start for beam origin being in middle of a segment */
 	VectorMA(start, 8, f, start);
 
 	/* adjust end z for end spot since the monster is currently dead */
-	VectorCopy(self->enemy->s.origin, end);
-	end[2] = self->enemy->absmin[2] + self->enemy->size[2] / 2;
+	VectorCopy(patient->s.origin, end);
+	end[2] = patient->absmin[2] + patient->size[2] / 2;
 
 	gi.WriteByte(svc_temp_entity);
 	gi.WriteByte(TE_MEDIC_CABLE_ATTACK);
@@ -938,8 +939,7 @@ medic_hook_retract(edict_t *self)
 	}
 
 	gi.sound(self, CHAN_WEAPON, sound_hook_retract, 1, ATTN_NORM, 0);
-	self->enemy->monsterinfo.aiflags &= ~AI_RESURRECTING;
-	M_SetEffects(self->enemy);
+	stop_heal(self);
 }
 
 static mframe_t medic_frames_attackCable[] = {
