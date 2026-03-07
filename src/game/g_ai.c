@@ -970,7 +970,7 @@ hesDeadJim(const edict_t *self)
 	return (enemy->health <= 0);
 }
 
-static void
+void
 stop_heal(edict_t *self)
 {
 	edict_t *patient;
