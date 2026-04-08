@@ -401,6 +401,17 @@ HuntTarget(edict_t *self)
 		return;
 	}
 
+	if (self->monsterinfo.aiflags & AI_COMBAT_POINT)
+	{
+		if (self->goalentity && self->goalentity->classname &&
+			!strcmp(self->goalentity->classname, "point_combat"))
+		{
+			return;
+		}
+
+		self->monsterinfo.aiflags &= ~AI_COMBAT_POINT;
+	}
+
 	self->goalentity = self->enemy;
 
 	if (self->monsterinfo.aiflags & AI_STAND_GROUND)
