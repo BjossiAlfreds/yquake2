@@ -1704,3 +1704,134 @@ Q_realloc0(void *ptr, size_t prev_n, size_t new_n)
 
 	return new_ptr;
 }
+
+/* strlist_t API */
+
+void
+StrList_Init(strlist_t *sl, int cap)
+{
+	memset(sl, 0, sizeof(*sl));
+
+	if (cap > 0)
+	{
+		/* allocating +1 ensures the list is always NULL terminated */
+		sl->data = calloc(cap + 1, sizeof(char *));
+
+		if (!sl->data)
+		{
+			return;
+		}
+
+		sl->cap = cap;
+	}
+}
+
+void
+StrList_Free(strlist_t *sl)
+{
+	if (sl->data)
+	{
+		int i;
+
+		for (i = 0; i < sl->num; i++)
+		{
+			if (sl->data[i])
+			{
+				free(sl->data[i]);
+			}
+		}
+
+		free(sl->data);
+		sl->data = NULL;
+	}
+
+	sl->cap = 0;
+	sl->num = 0;
+}
+
+int
+StrList_Find(const strlist_t *sl, const char *s)
+{
+	int i;
+
+	for (i = 0; i < sl->num; i++)
+	{
+		if (sl->data[i] && !strcmp(sl->data[i], s))
+		{
+			return i;
+		}
+	}
+
+	return sl->num;
+}
+
+void
+StrList_Expand(strlist_t *sl, int new_cap)
+{
+	char **new_data;
+
+	if (new_cap <= sl->cap)
+	{
+		return;
+	}
+
+	new_data = Q_realloc0(sl->data,
+		!sl->cap ? 0 : ((sl->cap + 1) * sizeof(char *)),
+		(new_cap + 1) * sizeof(char *));
+
+	if (!new_data)
+	{
+		return;
+	}
+
+	sl->data = new_data;
+	sl->cap = new_cap;
+}
+
+void
+StrList_Append(strlist_t *sl, const char *s)
+{
+	char *new_s;
+	size_t len;
+
+	if (sl->num >= sl->cap)
+	{
+		StrList_Expand(sl, NextPow2gt(sl->cap));
+	}
+
+	len = strlen(s) + 1;
+	new_s = malloc(len);
+
+	if (new_s)
+	{
+		strcpy(new_s, s);
+
+		sl->data[sl->num] = new_s;
+		sl->num++;
+	}
+}
+
+void
+StrList_Print(const strlist_t *sl, void (*printfunc)(const char *fmt, ...))
+{
+	int i;
+
+	if (!printfunc)
+	{
+		printfunc = Com_Printf;
+	}
+
+	printfunc("%d / %d items\n{\n", sl->num, sl->cap);
+
+	for (i = 0; i < sl->num; i++)
+	{
+		printfunc("  '%s'\n", sl->data[i]);
+	}
+
+	if (sl->num && !sl->data[sl->num])
+	{
+		printfunc("  NULL\n");
+	}
+
+	printfunc("}\n");
+}
