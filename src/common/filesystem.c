@@ -1721,6 +1721,104 @@ FS_ListMods(int *nummods)
 	return modnames;
 }
 
+static qboolean
+HasValidPack(const char *dir)
+{
+	int i;
+
+	// iterate over supported pack types, but ignore ZIP files (they cause false positives)
+	for (i = 0; i < ARRLEN(fs_packtypes); i++)
+	{
+		strlist_t packs;
+		char findnamepattern[MAX_OSPATH];
+		int npacks;
+
+		if (!strcmp("zip", fs_packtypes[i].suffix))
+		{
+			continue;
+		}
+
+		Com_sprintf(findnamepattern, sizeof(findnamepattern), "%s/*.%s",
+			dir, fs_packtypes[i].suffix);
+
+		packs = FS_ListFilesx(findnamepattern, 0, 0);
+		npacks = packs.num;
+		StrList_Free(&packs);
+
+		if (npacks)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+strlist_t
+FS_ListModsx(void)
+{
+	strlist_t list;
+
+	StrList_Init(&list, 0);
+
+	for (fsRawPath_t *search = fs_rawPath; search; search = search->next)
+	{
+		strlist_t dirchildren;
+		char searchpath[MAX_OSPATH];
+		size_t searchpathlength;
+		int i;
+
+		searchpathlength = strlen(search->path);
+		if (!searchpathlength)
+		{
+			continue;
+		}
+
+		// make sure this Raw path ends with a '/' otherwise FS_ListFiles will open its parent dir
+		if (search->path[searchpathlength - 1] != '/')
+		{
+			Com_sprintf(searchpath, sizeof(searchpath), "%s/*", search->path);
+		}
+		else
+		{
+			Com_sprintf(searchpath, sizeof(searchpath), "%s*", search->path);
+		}
+
+		dirchildren = FS_ListFilesx(searchpath, 0, 0);
+
+		if (!dirchildren.num)
+		{
+			continue;
+		}
+
+		// iterate over the children of this Raw path (unless we've already got enough mods)
+		for (i = 0; i < dirchildren.num && list.num < MAX_MODS; i++)
+		{
+			if (HasValidPack(dirchildren.data[i]))
+			{
+				char modname[MAX_QPATH];
+
+				Com_sprintf(modname, sizeof(modname), "%s",
+					strrchr(dirchildren.data[i], '/') + 1);
+
+				if (!StrList_Contains(&list, modname))
+				{
+					StrList_Append(&list, modname);
+				}
+			}
+		}
+
+		StrList_Free(&dirchildren);
+	}
+
+	if (list.num > 1)
+	{
+		qsort(list.data, list.num, sizeof(char *), Q_sort_modcmp);
+	}
+
+	return list;
+}
+
 /*
  * Directory listing.
  */
